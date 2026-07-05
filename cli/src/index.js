@@ -76,7 +76,7 @@ ${logger.separator('Next Steps')}
 `);
 }
 
-async function init() {
+async function init(defaults) {
   logger.banner();
 
   const targetDir = process.cwd();
@@ -87,22 +87,22 @@ async function init() {
 
   const projectType = report.hasPackageJson
     ? 'existing'
-    : await askProjectType();
+    : await askProjectType(defaults);
 
   const answers = { projectName: report.projectName };
 
   if (projectType === 'new') {
-    answers.projectName = await askProjectName();
+    answers.projectName = await askProjectName(defaults);
   }
 
-  answers.database = await askDatabase();
-  answers.port = await askPort(3000);
-  answers.jwtSecret = await askJwtSecret();
+  answers.database = await askDatabase(defaults);
+  answers.port = await askPort(3000, defaults);
+  answers.jwtSecret = await askJwtSecret(defaults);
   logger.info(logger.dim('Not sure which features to pick? Visit https://secureauth106293.netlify.app/ for guidance.'));
-  answers.features = await askFeatures();
+  answers.features = await askFeatures(defaults);
 
   logger.info('');
-  const confirmed = await askConfirm();
+  const confirmed = await askConfirm(defaults);
   if (!confirmed) {
     logger.warn('Installation cancelled.');
     return;

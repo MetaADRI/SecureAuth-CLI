@@ -1,6 +1,7 @@
 const { prompt } = require('enquirer');
 
-async function askProjectType() {
+async function askProjectType(defaults) {
+  if (defaults) return 'existing';
   const { type } = await prompt({
     type: 'select',
     name: 'type',
@@ -13,7 +14,8 @@ async function askProjectType() {
   return type;
 }
 
-async function askProjectName() {
+async function askProjectName(defaults) {
+  if (defaults) return 'my-secure-app';
   const { name } = await prompt({
     type: 'input',
     name: 'name',
@@ -25,7 +27,8 @@ async function askProjectName() {
   return name;
 }
 
-async function askDatabase() {
+async function askDatabase(defaults) {
+  if (defaults) return process.env.SECUREAUTH_DB || 'sqlite';
   const { db } = await prompt({
     type: 'select',
     name: 'db',
@@ -39,7 +42,8 @@ async function askDatabase() {
   return db;
 }
 
-async function askPort(defaultPort) {
+async function askPort(defaultPort, defaults) {
+  if (defaults) return parseInt(process.env.SECUREAUTH_PORT || String(defaultPort), 10);
   const { port } = await prompt({
     type: 'input',
     name: 'port',
@@ -51,8 +55,9 @@ async function askPort(defaultPort) {
   return parseInt(port, 10);
 }
 
-async function askJwtSecret() {
+async function askJwtSecret(defaults) {
   const autoSecret = require('crypto').randomBytes(32).toString('hex');
+  if (defaults) return process.env.SECUREAUTH_JWT_SECRET || autoSecret;
   const { choice } = await prompt({
     type: 'select',
     name: 'choice',
@@ -73,7 +78,12 @@ async function askJwtSecret() {
   return secret;
 }
 
-async function askFeatures() {
+async function askFeatures(defaults) {
+  if (defaults) {
+    const env = process.env.SECUREAUTH_FEATURES;
+    if (env) return env.split(',').map(s => s.trim());
+    return ['ddos', 'accountLockout'];
+  }
   const { features } = await prompt({
     type: 'multiselect',
     name: 'features',
@@ -88,7 +98,8 @@ async function askFeatures() {
   return features;
 }
 
-async function askConfirm() {
+async function askConfirm(defaults) {
+  if (defaults) return true;
   const { confirmed } = await prompt({
     type: 'toggle',
     name: 'confirmed',
