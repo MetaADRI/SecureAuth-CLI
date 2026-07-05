@@ -117,7 +117,59 @@ function scaffold(targetDir, answers) {
     fileCount++;
   }
 
+  postProcess(targetDir);
   return fileCount;
+}
+
+function postProcess(targetDir) {
+  const files = {
+    'controllers/authController.js': [
+      {
+        search: /(const failedAttempts = await userModel\.incrementFailedAttempts\(user\.id\);)(?!\s+const remaining)/,
+        replace: '$1\n      const remaining = MAX_FAILED_ATTEMPTS - failedAttempts;'
+      }
+    ],
+    'server.js': [
+      {
+        search: /require\('dotenv'\)\.config\(\);/,
+        replace: "const path = require('path');\nrequire('dotenv').config({ path: path.join(__dirname, '.env') });"
+      },
+      {
+        search: /initDatabase\(\)\s*\.then\(async\s*\(\)\s*=>\s*\{[\s\S]*?await seedAdminUser\(\);[\s\S]*?await seedDemoUser\(\);[\s\S]*?dbReady\s*=\s*true;[\s\S]*?console\.log\('Database initialized and seeded'\);\s*\}\)[\s\S]*?\.catch\(err\s*=>\s*\{[\s\S]*?console\.error\('Database initialization failed:',\s*err\.message\);\s*\}\);/,
+        replace: "try {\n  initDatabase();\n  seedAdminUser();\n  seedDemoUser();\n  dbReady = true;\n  console.log('Database initialized and seeded');\n} catch (err) {\n  console.error('Database initialization failed:', err.message);\n}"
+      }
+    ],
+    'database/db.sqlite.js': [
+      {
+        search: /query:\s*\(text,\s*params\)\s*=>\s*\{[^}]*const stmt\s*=\s*db\.prepare\(text\);[^}]*const rows\s*=\s*params\s*\?\s*stmt\.all\(\.\.\.params\)\s*:\s*stmt\.all\(\);[^}]*return\s*\{\s*rows\s*\};[^}]*\}/,
+        replace: "query: (text, params) => {\n      const stmt = db.prepare(text);\n      const sql = text.trim().toUpperCase();\n      if (sql.startsWith('SELECT')) {\n        const rows = params ? stmt.all(...params) : stmt.all();\n        return { rows };\n      }\n      const info = params ? stmt.run(...params) : stmt.run();\n      return { rows: [], changes: info.changes };\n    }"
+      }
+    ],
+    'routes/authRoutes.js': [
+      {
+        search: /router\.post\('\/demo\/login', authController\.demoLogin\);\s*/,
+        replace: ''
+      }
+    ]
+  };
+
+  for (const [relative, rules] of Object.entries(files)) {
+    const filePath = path.join(targetDir, relative);
+    if (!fs.existsSync(filePath)) continue;
+    try {
+      let content = fs.readFileSync(filePath, 'utf-8');
+      const before = content;
+      for (const rule of rules) {
+        content = content.replace(rule.search, rule.replace);
+      }
+      if (content !== before) {
+        fs.writeFileSync(filePath, content, 'utf-8');
+        logger.info(`Patched ${relative}`);
+      }
+    } catch {
+      // skip unreadable files
+    }
+  }
 }
 
 function collectFiles(dir) {
