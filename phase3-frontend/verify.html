@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2FA Verification - SecureAuth</title>
+    
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23003366%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z%22/></svg>">
+    
+    <!-- Google Fonts - Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'cuz-blue': '#003366',
+                        'cuz-blue-light': '#0066CC',
+                        'cuz-blue-dark': '#002244',
+                        'metallic': '#6C757D',
+                        'light-gray': '#F8F9FA',
+                        'dark-gray': '#343A40',
+                    },
+                    fontFamily: {
+                        'inter': ['Inter', 'system-ui', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        * {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        
+        .btn-scale {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .btn-scale:hover {
+            transform: scale(1.02);
+        }
+        
+        .btn-scale:active {
+            transform: scale(0.98);
+        }
+        
+        /* 2FA Input styling */
+        .otp-input {
+            width: 56px;
+            height: 64px;
+            font-size: 1.5rem;
+            font-weight: 600;
+            text-align: center;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            transition: all 0.2s ease;
+        }
+        
+        .otp-input:focus {
+            border-color: #003366;
+            box-shadow: 0 0 0 4px rgba(0, 51, 102, 0.1);
+            outline: none;
+        }
+        
+        .otp-input.filled {
+            border-color: #003366;
+            background-color: #f0f7ff;
+        }
+        
+        /* Shake animation for error */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        
+        .shake {
+            animation: shake 0.5s ease;
+        }
+        
+        /* Timer progress bar */
+        .timer-bar {
+            transition: width 1s linear;
+        }
+        
+        /* Success checkmark animation */
+        @keyframes checkmark {
+            0% { transform: scale(0); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        
+        .checkmark-animate {
+            animation: checkmark 0.5s ease;
+        }
+        
+        @media (max-width: 640px) {
+            .otp-input {
+                width: 44px;
+                height: 52px;
+                font-size: 1.25rem;
+            }
+        }
+        /* ===== Footer Animations ===== */
+        @keyframes footerGradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes footerOrbFloat {
+            0%, 100% { transform: translate(0,0) scale(1); opacity: 0.15; }
+            33% { transform: translate(-40px,-30px) scale(1.3); opacity: 0.25; }
+            66% { transform: translate(30px,20px) scale(0.8); opacity: 0.1; }
+        }
+        @keyframes iconFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        @keyframes badgePulse {
+            0%, 100% { box-shadow: 0 0 15px rgba(74,125,255,0.3); }
+            50% { box-shadow: 0 0 35px rgba(74,125,255,0.7); }
+        }
+        @keyframes dividerGlow {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 0.8; }
+        }
+        @keyframes cardBorderPulse {
+            0%, 100% { border-color: rgba(74,125,255,0.15); }
+            50% { border-color: rgba(74,125,255,0.5); }
+        }
+        .footer-bg {
+            background: linear-gradient(135deg, #002244 0%, #003366 25%, #0a1628 50%, #002244 75%, #001a33 100%);
+            background-size: 200% 200%;
+            animation: footerGradient 10s ease infinite;
+        }
+        .footer-orb {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(74,125,255,0.3), transparent);
+            animation: footerOrbFloat var(--d) ease-in-out infinite;
+            animation-delay: var(--del);
+        }
+        .footer-social-icon {
+            animation: iconFloat 3s ease-in-out infinite;
+        }
+        .footer-social-icon:nth-child(2) { animation-delay: 0.4s; }
+        .footer-social-icon:nth-child(3) { animation-delay: 0.8s; }
+        .footer-social-icon:nth-child(4) { animation-delay: 1.2s; }
+        .footer-badge {
+            animation: badgePulse 2.5s ease-in-out infinite;
+        }
+        .footer-divider {
+            animation: dividerGlow 3s ease-in-out infinite;
+        }
+        .footer-card {
+            animation: cardBorderPulse 3s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-light-gray to-gray-100 min-h-screen flex flex-col items-center p-4">
+    
+    <div class="w-full max-w-md mt-12 mb-12">
+        <!-- Logo Header -->
+        <div class="text-center mb-8">
+            <a href="index.html" class="inline-flex items-center space-x-2 mb-4">
+                <div class="w-12 h-12 bg-cuz-blue rounded-xl flex items-center justify-center shadow-lg">
+                    <i data-lucide="shield-check" class="w-7 h-7 text-white"></i>
+                </div>
+                <span class="text-2xl font-bold text-cuz-blue">SecureAuth</span>
+            </a>
+        </div>
+        
+        <!-- 2FA Verification Card -->
+        <div class="bg-white rounded-2xl shadow-xl p-6 sm:p-8">
+            <!-- Icon -->
+            <div class="text-center mb-6">
+                <div class="w-20 h-20 bg-cuz-blue/10 rounded-full flex items-center justify-center mx-auto">
+                    <i data-lucide="shield-check" class="w-10 h-10 text-cuz-blue"></i>
+                </div>
+            </div>
+            
+            <div id="verifySection">
+                <h1 class="text-2xl font-bold text-dark-gray text-center mb-2">Two-Factor Authentication</h1>
+                <p class="text-metallic text-center mb-6">
+                    Enter the 6-digit code from your authenticator app
+                </p>
+                
+                <!-- OTP Inputs -->
+                <form id="verifyForm" class="mb-6">
+                    <div class="flex justify-center gap-2 sm:gap-3 mb-6">
+                        <input type="text" maxlength="1" class="otp-input" id="otp1" autocomplete="off" inputmode="numeric">
+                        <input type="text" maxlength="1" class="otp-input" id="otp2" autocomplete="off" inputmode="numeric">
+                        <input type="text" maxlength="1" class="otp-input" id="otp3" autocomplete="off" inputmode="numeric">
+                        <input type="text" maxlength="1" class="otp-input" id="otp4" autocomplete="off" inputmode="numeric">
+                        <input type="text" maxlength="1" class="otp-input" id="otp5" autocomplete="off" inputmode="numeric">
+                        <input type="text" maxlength="1" class="otp-input" id="otp6" autocomplete="off" inputmode="numeric">
+                    </div>
+                    
+                    <!-- Error Alert -->
+                    <div id="errorAlert" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm mb-4">
+                        <div class="flex items-center justify-center">
+                            <i data-lucide="alert-circle" class="w-4 h-4 mr-2"></i>
+                            <span id="errorMessage">Invalid verification code</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Timer -->
+                    <div class="mb-6">
+                        <div class="flex justify-between items-center text-sm text-metallic mb-2">
+                            <span>Code expires in</span>
+                            <span id="timerText" class="font-semibold text-cuz-blue">30s</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div id="timerBar" class="bg-cuz-blue h-2 rounded-full timer-bar" style="width: 100%"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Submit Button -->
+                    <button 
+                        type="submit" 
+                        id="verifyBtn"
+                        class="w-full bg-cuz-blue hover:bg-cuz-blue-light text-white py-3.5 rounded-xl font-semibold btn-scale transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled
+                    >
+                        <svg id="loadingSpinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span id="btnText">Verify & Login</span>
+                    </button>
+                </form>
+                
+                <!-- Back Link -->
+                <div class="text-center">
+                    <button id="backBtn" class="text-metallic hover:text-cuz-blue transition-colors flex items-center justify-center mx-auto text-sm font-medium">
+                        <i data-lucide="arrow-left" class="w-4 h-4 mr-1"></i>
+                        Use different account
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Success State -->
+            <div id="successSection" class="hidden text-center py-4">
+                <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 checkmark-animate">
+                    <i data-lucide="check-circle" class="w-10 h-10 text-green-600"></i>
+                </div>
+                <h3 class="text-2xl font-bold text-dark-gray mb-2">Verification Successful!</h3>
+                <p class="text-metallic mb-4">Redirecting to your dashboard...</p>
+                <div class="flex justify-center">
+                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-cuz-blue"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Help Text -->
+        <div class="text-center mt-6">
+            <p class="text-sm text-metallic">
+                Lost access to your authenticator?
+                <a href="#" class="text-cuz-blue hover:text-cuz-blue-light font-medium transition-colors" data-action="alert('Please contact your administrator to reset 2FA'); return false;">
+                    Contact support
+                </a>
+            </p>
+        </div>
+    </div>
+
+
+    <!-- Footer -->
+    <footer class="footer-bg text-white py-16 w-full relative overflow-hidden">
+        <div class="footer-orbs pointer-events-none absolute inset-0 z-0">
+            <div class="footer-orb" style="width:300px;height:300px;top:5%;left:-5%;--d:25s;--del:0s;"></div>
+            <div class="footer-orb" style="width:200px;height:200px;bottom:10%;right:5%;--d:18s;--del:-6s;"></div>
+            <div class="footer-orb" style="width:150px;height:150px;top:40%;left:55%;--d:14s;--del:-12s;"></div>
+            <div class="footer-orb" style="width:120px;height:120px;bottom:30%;left:20%;--d:20s;--del:-3s;"></div>
+        </div>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <div class="grid md:grid-cols-3 gap-12">
+                <!-- Company Info -->
+                <div class="space-y-6">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-lg">
+                            <i data-lucide="shield-check" class="w-6 h-6 text-cuz-blue"></i>
+                        </div>
+                        <span class="text-2xl font-bold tracking-tight">SecureAuth</span>
+                    </div>
+                    <p class="text-gray-400 leading-relaxed">
+                        Enterprise-grade two-factor authentication and flood protection suite. Engineered for absolute security, designed for seamless user experience.
+                    </p>
+                    <div class="flex space-x-4">
+                        <a href="https://github.com/MetaADRI" target="_blank" class="footer-social-icon w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-white hover:text-cuz-blue-dark transition-all duration-300">
+                            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.372.79 1.102.79 2.222v3.293c0 .319.21.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+                        </a>
+                        <a href="https://www.linkedin.com/in/bwalya-adrian-mange-4101a8396" target="_blank" class="footer-social-icon w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-white hover:text-cuz-blue-dark transition-all duration-300">
+                            <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.6 1.437-1.237 2.673-1.237 2.856 0 3.385 1.88 3.385 4.327v6.804zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                        </a>
+                        <a href="mailto:adrianmange00@gmail.com" class="footer-social-icon w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-white hover:text-cuz-blue-dark transition-all duration-300">
+                            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M24 5.457v13.909c0 .904-.732 1.634-1.634 1.634h-20.732c-.902 0-1.634-.73-1.634-1.634v-13.909l12 7 12-7zm-12 4.671l-10.756-6.271c-.269.172-.444.47-.444.808v.537l11.2 6.533 11.2-6.533v-.537c0-.338-.175-.636-.444-.808l-10.756 6.271z"/></svg>
+                        </a>
+                        <a href="https://mypage01.vercel.app/" target="_blank" class="footer-social-icon w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-white hover:text-cuz-blue-dark transition-all duration-300" title="Personal Website">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- Contact Section -->
+                <div class="space-y-6">
+                    <h4 class="text-lg font-bold border-b border-gray-800 pb-2 footer-divider">Contact Me</h4>
+                    <ul class="space-y-4">
+                        <li>
+                            <a href="mailto:adrianmange00@gmail.com" class="group flex items-center space-x-3 text-gray-400 hover:text-white transition-colors">
+                                <div class="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center group-hover:bg-cuz-blue-light transition-colors">
+                                    <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M24 5.457v13.909c0 .904-.732 1.634-1.634 1.634h-20.732c-.902 0-1.634-.73-1.634-1.634v-13.909l12 7 12-7zm-12 4.671l-10.756-6.271c-.269.172-.444.47-.444.808v.537l11.2 6.533 11.2-6.533v-.537c0-.338-.175-.636-.444-.808l-10.756 6.271z"/></svg>
+                                </div>
+                                <span>adrianmange00@gmail.com</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="https://www.linkedin.com/in/bwalya-adrian-mange-4101a8396" target="_blank" class="group flex items-center space-x-3 text-gray-400 hover:text-white transition-colors">
+                                <div class="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center group-hover:bg-cuz-blue-light transition-colors">
+                                    <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.6 1.437-1.237 2.673-1.237 2.856 0 3.385 1.88 3.385 4.327v6.804zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                                </div>
+                                <span>LinkedIn Profile</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="https://github.com/MetaADRI" target="_blank" class="group flex items-center space-x-3 text-gray-400 hover:text-white transition-colors">
+                                <div class="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center group-hover:bg-cuz-blue-light transition-colors">
+                                    <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.372.79 1.102.79 2.222v3.293c0 .319.21.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+                                </div>
+                                <span>GitHub Repository</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="https://mypage01.vercel.app/" target="_blank" class="group flex items-center space-x-3 text-gray-400 hover:text-white transition-colors">
+                                <div class="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center group-hover:bg-cuz-blue-light transition-colors">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                                </div>
+                                <span>Personal Website</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <!-- Institution Info -->
+                <div class="space-y-6">
+                    <h4 class="text-lg font-bold border-b border-gray-800 pb-2 footer-divider">Academic Project</h4>
+                    <div class="footer-card bg-gray-800/50 p-6 rounded-2xl border border-gray-800">
+                        <p class="text-sm text-gray-400 space-y-2">
+                            <span class="block text-white font-medium">Bwalya Adrian Mange (106-293)</span>
+                            <span class="block">Cavendish University Zambia</span>
+                            <span class="block italic">BSc Computing Final Year Project</span>
+                        </p>
+                        <div class="mt-4 pt-4 border-t border-gray-700">
+                            <span class="footer-badge inline-flex items-center px-3 py-1 bg-cuz-blue-light/20 text-cuz-blue-light rounded-full text-xs font-bold uppercase tracking-wider">
+                                <i data-lucide="shield" class="w-3 h-3 mr-1"></i>
+                                Cybersecurity
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="footer-divider border-t border-gray-800 mt-10 md:mt-16 pt-8 flex flex-col md:flex-row justify-between items-center text-gray-500 text-sm">
+                <p>&copy; 2026 SecureAuth System. All rights reserved.</p>
+                <div class="flex space-x-6 mt-4 md:mt-0">
+                    <a href="#" class="hover:text-white transition-colors">Privacy Policy</a>
+                    <a href="#" class="hover:text-white transition-colors">Terms of Service</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+    
+    <script src="js/auth.js"></script>
+    <script>
+        // Initialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+
+        // Check if user has temp token
+        const tempToken = localStorage.getItem('tempToken');
+        const userEmail = localStorage.getItem('userEmail');
+        
+        if (!tempToken) {
+            window.location.href = 'login.html';
+        }
+        
+        // OTP Input handling
+        const otpInputs = document.querySelectorAll('.otp-input');
+        const verifyBtn = document.getElementById('verifyBtn');
+        const errorAlert = document.getElementById('errorAlert');
+        const errorMessage = document.getElementById('errorMessage');
+        const verifyForm = document.getElementById('verifyForm');
+        
+        // Focus first input on load
+        setTimeout(() => otpInputs[0].focus(), 100);
+        
+        function updateButtonState() {
+            const allFilled = Array.from(otpInputs).every(inp => inp.value.length === 1);
+            verifyBtn.disabled = !allFilled;
+            if (allFilled) {
+                verifyBtn.classList.remove('opacity-50');
+            } else {
+                verifyBtn.classList.add('opacity-50');
+            }
+            return allFilled;
+        }
+
+        // Handle input
+        otpInputs.forEach((input, index) => {
+            // Only allow numbers and handle auto-tabbing
+            input.addEventListener('input', (e) => {
+                const value = e.target.value;
+                
+                // Ensure only numbers
+                if (/[^0-9]/.test(value)) {
+                    input.value = value.replace(/[^0-9]/g, '');
+                    return;
+                }
+
+                if (value.length === 1) {
+                    input.classList.add('filled');
+                    // Move to next input
+                    if (index < otpInputs.length - 1) {
+                        otpInputs[index + 1].focus();
+                    }
+                } else {
+                    input.classList.remove('filled');
+                }
+                
+                const allFilled = updateButtonState();
+                
+                // Auto-submit if all filled
+                if (allFilled) {
+                    // Use a slightly longer delay to ensure the last digit is visible
+                    setTimeout(() => {
+                        if (updateButtonState()) {
+                            verifyForm.dispatchEvent(new Event('submit'));
+                        }
+                    }, 300);
+                }
+            });
+            
+            // Handle backspace and arrow keys
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace') {
+                    if (!input.value && index > 0) {
+                        otpInputs[index - 1].focus();
+                    }
+                } else if (e.key === 'ArrowLeft' && index > 0) {
+                    otpInputs[index - 1].focus();
+                } else if (e.key === 'ArrowRight' && index < otpInputs.length - 1) {
+                    otpInputs[index + 1].focus();
+                }
+            });
+            
+            // Handle paste
+            input.addEventListener('paste', (e) => {
+                e.preventDefault();
+                const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+                
+                pastedData.split('').forEach((digit, i) => {
+                    if (otpInputs[i]) {
+                        otpInputs[i].value = digit;
+                        otpInputs[i].classList.add('filled');
+                    }
+                });
+                
+                // Focus last filled or next empty
+                const nextIndex = Math.min(pastedData.length, 5);
+                otpInputs[nextIndex].focus();
+                
+                const allFilled = updateButtonState();
+                
+                if (allFilled) {
+                    setTimeout(() => {
+                        if (updateButtonState()) {
+                            verifyForm.dispatchEvent(new Event('submit'));
+                        }
+                    }, 300);
+                }
+            });
+        });
+        
+        // Timer countdown
+        let timeLeft = 30;
+        const timerText = document.getElementById('timerText');
+        const timerBar = document.getElementById('timerBar');
+        
+        const timerInterval = setInterval(() => {
+            timeLeft--;
+            if (timeLeft < 0) timeLeft = 0;
+            
+            timerText.textContent = timeLeft + 's';
+            timerBar.style.width = (timeLeft / 30 * 100) + '%';
+            
+            if (timeLeft <= 10) {
+                timerBar.classList.remove('bg-cuz-blue');
+                timerBar.classList.add('bg-red-500');
+                timerText.classList.add('text-red-600');
+            }
+            
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                timerText.textContent = 'Expired';
+                errorMessage.textContent = 'Code expired. Please wait for a new code.';
+                errorAlert.classList.remove('hidden');
+                verifyBtn.disabled = true;
+            }
+        }, 1000);
+        
+        // Form submission
+        verifyForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const code = Array.from(otpInputs).map(input => input.value).join('');
+            if (code.length !== 6) return;
+            
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            const btnText = document.getElementById('btnText');
+            
+            errorAlert.classList.add('hidden');
+            verifyBtn.disabled = true;
+            loadingSpinner.classList.remove('hidden');
+            btnText.textContent = 'Verifying...';
+            
+            try {
+                const response = await fetch('/api/verify-2fa', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${tempToken}`
+                    },
+                    body: JSON.stringify({ 
+                        email: userEmail,
+                        code: code,
+                        token: code
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    localStorage.setItem('accessToken', data.accessToken);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    
+                    const isAdmin = data.user.role === 'admin';
+                    localStorage.removeItem('tempToken');
+                    localStorage.removeItem('userEmail');
+                    localStorage.removeItem('adminMode');
+                    
+                    document.getElementById('verifySection').classList.add('hidden');
+                    document.getElementById('successSection').classList.remove('hidden');
+                    
+                    setTimeout(() => {
+                        window.location.href = isAdmin ? 'admin-dashboard.html' : 'dashboard.html';
+                    }, 1500);
+                } else {
+                    errorMessage.textContent = data.message || 'Invalid verification code';
+                    errorAlert.classList.remove('hidden');
+                    errorAlert.classList.add('shake');
+                    setTimeout(() => errorAlert.classList.remove('shake'), 500);
+                    
+                    otpInputs.forEach(input => {
+                        input.value = '';
+                        input.classList.remove('filled');
+                    });
+                    updateButtonState();
+                    otpInputs[0].focus();
+                    
+                    verifyBtn.disabled = false;
+                    loadingSpinner.classList.add('hidden');
+                    btnText.textContent = 'Verify & Login';
+                }
+            } catch (error) {
+                errorMessage.textContent = 'Connection error. Is the server running?';
+                errorAlert.classList.remove('hidden');
+                verifyBtn.disabled = false;
+                loadingSpinner.classList.add('hidden');
+                btnText.textContent = 'Verify & Login';
+            }
+        });
+        
+        // Back button
+        document.getElementById('backBtn').addEventListener('click', () => {
+            localStorage.removeItem('tempToken');
+            localStorage.removeItem('userEmail');
+            window.location.href = 'login.html';
+        });
+
+        // CSP-safe click delegation
+        document.addEventListener('click', function(e) {
+            var cardEl = e.target.closest('[data-card-idx]');
+            if (cardEl && typeof ariaCardsData !== 'undefined' && ariaCardsData.length > 0) {
+                var idx = parseInt(cardEl.getAttribute('data-card-idx'));
+                var c = ariaCardsData[idx];
+                if (c) { ariaShowCardDetail(c.title, c.desc, c.threat); return; }
+            }
+            var btn = e.target.closest('[data-action]');
+            if (!btn) return;
+            var action = (btn.getAttribute('data-action') || '').trim();
+            var argsAttr = btn.getAttribute('data-args');
+            if (argsAttr !== null) { if (typeof window[action] === 'function') { window[action](argsAttr); } return; }
+            if (btn.hasAttribute('data-self')) { if (typeof window[action] === 'function') { window[action](btn); } return; }
+            if (typeof window[action] === 'function') { window[action](); return; }
+            var m1 = action.match(/^(\w[\w.]*)\(\)$/);
+            if (m1 && typeof window[m1[1]] === 'function') { window[m1[1]](); return; }
+            var m2 = action.match(/^(\w[\w.]*)\(\s*'([^']*)'\s*(?:,\s*'([^']*)'\s*)?\)$/);
+            if (m2 && typeof window[m2[1]] === 'function') { var a = [m2[2]]; if (m2[3] !== undefined) a.push(m2[3]); window[m2[1]].apply(null, a); return; }
+            if (action.match(/^alert\s*\(/)) { var m = action.match(/['"]([^'"]+)['"]/); if (m) alert(m[1]); return; }
+            var m4 = action.match(/^window\.location\.href\s*=\s*'([^']+)'$/);
+            if (m4) { window.location.href = m4[1]; return; }
+            var m5 = action.match(/^(\w[\w.]*)\(\s*'([^']*)'\s*(?:,\s*'([^']*)'\s*)?\);\s*return\s+false;?$/);
+            if (m5 && typeof window[m5[1]] === 'function') { var a = [m5[2]]; if (m5[3] !== undefined) a.push(m5[3]); window[m5[1]].apply(null, a); return; }
+            console.warn('CSP action unhandled:', action);
+        });
+    </script>
+</body>
+</html>

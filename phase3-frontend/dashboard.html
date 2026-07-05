@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - SecureAuth</title>
+    
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23003366%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z%22/></svg>">
+    
+    <!-- Google Fonts - Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'cuz-blue': '#003366',
+                        'cuz-blue-light': '#0066CC',
+                        'cuz-blue-dark': '#002244',
+                        'metallic': '#6C757D',
+                        'light-gray': '#F8F9FA',
+                        'dark-gray': '#343A40',
+                    },
+                    fontFamily: {
+                        'inter': ['Inter', 'system-ui', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        * {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        
+        .btn-scale {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .btn-scale:hover {
+            transform: scale(1.02);
+        }
+        
+        .card-lift {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .card-lift:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px rgba(0,51,102,0.1);
+        }
+        
+        /* Table row hover */
+        .table-row:hover {
+            background-color: #f8f9fa;
+        }
+        
+        /* Mobile menu */
+        .mobile-menu {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        
+        .mobile-menu.open {
+            max-height: 400px;
+        }
+        
+        /* Status dot animation */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .status-pulse {
+            animation: pulse 2s infinite;
+        }
+
+        /* Glass effect */
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        /* ===== Footer Animations ===== */
+        @keyframes footerGradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes footerOrbFloat {
+            0%, 100% { transform: translate(0,0) scale(1); opacity: 0.15; }
+            33% { transform: translate(-40px,-30px) scale(1.3); opacity: 0.25; }
+            66% { transform: translate(30px,20px) scale(0.8); opacity: 0.1; }
+        }
+        @keyframes iconFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        @keyframes badgePulse {
+            0%, 100% { box-shadow: 0 0 15px rgba(74,125,255,0.3); }
+            50% { box-shadow: 0 0 35px rgba(74,125,255,0.7); }
+        }
+        @keyframes dividerGlow {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 0.8; }
+        }
+        @keyframes cardBorderPulse {
+            0%, 100% { border-color: rgba(74,125,255,0.15); }
+            50% { border-color: rgba(74,125,255,0.5); }
+        }
+        .footer-bg {
+            background: linear-gradient(135deg, #002244 0%, #003366 25%, #0a1628 50%, #002244 75%, #001a33 100%);
+            background-size: 200% 200%;
+            animation: footerGradient 10s ease infinite;
+        }
+        .footer-orb {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(74,125,255,0.3), transparent);
+            animation: footerOrbFloat var(--d) ease-in-out infinite;
+            animation-delay: var(--del);
+        }
+        .footer-social-icon {
+            animation: iconFloat 3s ease-in-out infinite;
+        }
+        .footer-social-icon:nth-child(2) { animation-delay: 0.4s; }
+        .footer-social-icon:nth-child(3) { animation-delay: 0.8s; }
+        .footer-social-icon:nth-child(4) { animation-delay: 1.2s; }
+        .footer-badge {
+            animation: badgePulse 2.5s ease-in-out infinite;
+        }
+        .footer-divider {
+            animation: dividerGlow 3s ease-in-out infinite;
+        }
+        .footer-card {
+            animation: cardBorderPulse 3s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen flex flex-col">
+    <!-- Top Navigation -->
+    <nav class="bg-white/80 backdrop-blur-md border-b border-slate-200 fixed top-0 left-0 right-0 z-50 transition-transform duration-300">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Logo -->
+                <div class="flex items-center space-x-2">
+                    <div class="w-10 h-10 bg-cuz-blue rounded-xl flex items-center justify-center shadow-md">
+                        <i data-lucide="shield-check" class="w-6 h-6 text-white"></i>
+                    </div>
+                    <span class="text-xl font-bold text-cuz-blue tracking-tight">SecureAuth</span>
+                    <span class="hidden sm:inline text-slate-300 mx-2">/</span>
+                    <span class="hidden sm:inline text-slate-500 text-sm font-medium">Dashboard</span>
+                </div>
+                
+                <!-- Desktop Navigation -->
+                <div class="hidden md:flex items-center space-x-8">
+                    <a href="admin-dashboard.html" id="adminLink" class="hidden text-slate-500 hover:text-cuz-blue transition-all font-medium text-sm">Admin Panel</a>
+                    <div class="flex items-center space-x-3 text-slate-700 bg-slate-100 px-4 py-2 rounded-full border border-slate-200">
+                        <div class="w-6 h-6 bg-cuz-blue rounded-full flex items-center justify-center">
+                            <i data-lucide="user" class="w-3 h-3 text-white"></i>
+                        </div>
+                        <span id="userNameDisplay" class="font-semibold text-sm"></span>
+                    </div>
+                    <button id="logoutBtnDesktop" class="flex items-center space-x-2 text-slate-500 hover:text-red-600 transition-all font-medium text-sm group">
+                        <i data-lucide="log-out" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
+                        <span>Logout</span>
+                    </button>
+                </div>
+                
+                <!-- Mobile menu button -->
+                <button id="mobile-menu-btn" class="md:hidden p-2 text-slate-500 hover:text-cuz-blue transition-colors">
+                    <i data-lucide="menu" class="w-6 h-6"></i>
+                </button>
+            </div>
+            
+            <!-- Mobile Navigation -->
+            <div id="mobile-menu" class="mobile-menu md:hidden border-t border-slate-100">
+                <div class="py-4 space-y-3">
+                    <div class="flex items-center space-x-3 text-slate-700 px-4">
+                        <div class="w-8 h-8 bg-cuz-blue rounded-full flex items-center justify-center">
+                            <i data-lucide="user" class="w-4 h-4 text-white"></i>
+                        </div>
+                        <span id="userNameDisplayMobile" class="font-bold"></span>
+                    </div>
+                    <button id="logoutBtnMobile" class="w-full flex items-center space-x-3 text-red-600 hover:bg-red-50 px-4 py-3 transition-colors font-semibold">
+                        <i data-lucide="log-out" class="w-5 h-5"></i>
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Demo Mode Banner -->
+    <div id="demoBanner" class="hidden bg-amber-50 border-b border-amber-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <i data-lucide="flask" class="w-4 h-4 text-amber-600"></i>
+                <span class="text-sm font-semibold text-amber-800">Demo Mode — Exploring SecureAuth Sandbox</span>
+            </div>
+            <div class="flex items-center space-x-4">
+                <a href="demo.html" class="text-xs font-bold text-amber-700 hover:text-amber-900 uppercase tracking-wider">Sandbox Home</a>
+                <a href="admin-dashboard.html" class="text-xs font-bold text-amber-700 hover:text-amber-900 uppercase tracking-wider bg-amber-100 px-3 py-1.5 rounded-lg">Admin Panel</a>
+                <button data-action="exitDemo()" class="text-xs font-bold text-red-600 hover:text-red-800 uppercase tracking-wider">Exit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex-grow pt-24">
+        <!-- Welcome Section -->
+        <div class="mb-10 animate-fade-in">
+            <h1 class="text-2xl sm:text-4xl font-extrabold text-slate-900 mb-3 tracking-tight flex flex-wrap items-center">
+                Welcome back, <span id="welcomeName" class="text-cuz-blue mx-2"></span>
+                <span class="inline-flex items-center justify-center w-8 h-8 bg-cuz-blue/10 text-cuz-blue rounded-full">
+                    <i data-lucide="check-check" class="w-4 h-4"></i>
+                </span>
+            </h1>
+            <div class="inline-flex items-center px-4 py-2 bg-emerald-50 text-emerald-700 rounded-full text-sm font-semibold border border-emerald-100">
+                <i data-lucide="shield-check" class="w-4 h-4 mr-2"></i>
+                Account Protected with Enterprise 2FA
+            </div>
+        </div>
+        
+        <!-- Stats Grid -->
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+            <!-- Account Status -->
+            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 card-lift">
+                <div class="flex items-center justify-between mb-6">
+                    <div class="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-cuz-blue">
+                        <i data-lucide="activity" class="w-6 h-6"></i>
+                    </div>
+                    <span class="text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">Verified</span>
+                </div>
+                <p class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Security Status</p>
+                <p class="text-xl font-black text-slate-900" id="accountStatus">Active Security</p>
+                <p class="text-xs text-slate-400 mt-2 flex items-center" id="createdAt">
+                    <i data-lucide="calendar" class="w-3 h-3 mr-1"></i>
+                </p>
+            </div>
+            
+            <!-- 2FA Status -->
+            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 card-lift">
+                <div class="flex items-center justify-between mb-6">
+                    <div class="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600">
+                        <i data-lucide="shield-check" class="w-6 h-6"></i>
+                    </div>
+                    <div class="flex items-center space-x-1.5">
+                        <div class="w-2.5 h-2.5 bg-emerald-500 rounded-full status-pulse"></div>
+                        <span class="text-[10px] font-black uppercase tracking-widest text-emerald-600">Live</span>
+                    </div>
+                </div>
+                <p class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">2FA Protection</p>
+                <p class="text-xl font-black text-slate-900">TOTP Enabled</p>
+                <p class="text-xs text-slate-400 mt-2 flex items-center">
+                    <i data-lucide="smartphone" class="w-3 h-3 mr-1"></i>
+                    Linked to Device
+                </p>
+            </div>
+            
+            <!-- Total Users -->
+            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 card-lift">
+                <div class="flex items-center justify-between mb-6">
+                    <div class="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
+                        <i data-lucide="users" class="w-6 h-6"></i>
+                    </div>
+                </div>
+                <p class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Ecosystem Size</p>
+                <p class="text-3xl font-black text-slate-900" id="totalUsers">-</p>
+                <p class="text-xs text-slate-400 mt-2 flex items-center">
+                    <i data-lucide="globe" class="w-3 h-3 mr-1"></i>
+                    Global Users
+                </p>
+            </div>
+            
+            <!-- Last Login -->
+            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 card-lift">
+                <div class="flex items-center justify-between mb-6">
+                    <div class="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600">
+                        <i data-lucide="clock" class="w-6 h-6"></i>
+                    </div>
+                </div>
+                <p class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Last Activity</p>
+                <p class="text-xl font-black text-slate-900" id="lastLogin">-</p>
+                <p class="text-xs text-slate-400 mt-2 flex items-center">
+                    <i data-lucide="map-pin" class="w-3 h-3 mr-1"></i>
+                    Current Session
+                </p>
+            </div>
+        </div>
+        
+        <div class="grid lg:grid-cols-3 gap-8">
+            <!-- Left Column: Profile & Security -->
+            <div class="lg:col-span-1 space-y-8">
+                <!-- Profile Card -->
+                <div class="bg-white rounded-3xl shadow-sm p-6 sm:p-8 border border-slate-100">
+                    <h3 class="text-lg sm:text-xl font-black text-slate-900 mb-6 flex items-center">
+                        <i data-lucide="user-check" class="w-5 h-5 sm:w-6 sm:h-6 mr-3 text-cuz-blue"></i>
+                        Profile Identity
+                    </h3>
+                    <div class="space-y-6">
+                        <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                            <p class="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Legal Full Name</p>
+                            <p class="font-bold text-slate-900" id="fullName">-</p>
+                        </div>
+                        <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                            <p class="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Email Address</p>
+                            <p class="font-bold text-slate-900 break-all" id="email">-</p>
+                        </div>
+                        <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                            <p class="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">System UUID</p>
+                            <p class="font-mono text-[11px] text-slate-500" id="userId">-</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Security Settings -->
+                <div class="bg-white rounded-3xl shadow-sm p-6 sm:p-8 border border-slate-100">
+                    <h3 class="text-lg sm:text-xl font-black text-slate-900 mb-6 flex items-center">
+                        <i data-lucide="settings" class="w-5 h-5 sm:w-6 sm:h-6 mr-3 text-cuz-blue"></i>
+                        Core Controls
+                    </h3>
+                    <div class="space-y-4">
+                        <button data-action="alert('Feature coming soon: Change Password')" class="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-100 hover:border-cuz-blue hover:bg-cuz-blue/5 transition-all group text-left">
+                            <div class="flex items-center space-x-4">
+                                <div class="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center group-hover:bg-cuz-blue group-hover:text-white transition-colors">
+                                    <i data-lucide="key" class="w-5 h-5"></i>
+                                </div>
+                                <span class="font-bold text-slate-700 text-sm">Rotate Password</span>
+                            </div>
+                            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-cuz-blue transition-colors"></i>
+                        </button>
+                        <button data-action="alert('Feature coming soon: Regenerate 2FA')" class="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-100 hover:border-cuz-blue hover:bg-cuz-blue/5 transition-all group text-left">
+                            <div class="flex items-center space-x-4">
+                                <div class="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center group-hover:bg-cuz-blue group-hover:text-white transition-colors">
+                                    <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                                </div>
+                                <span class="font-bold text-slate-700 text-sm">Reset 2FA Vault</span>
+                            </div>
+                            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-cuz-blue transition-colors"></i>
+                        </button>
+                        
+                        <button id="deleteRequestBtn" class="w-full flex items-center justify-between p-4 rounded-2xl border border-rose-100 hover:border-rose-600 hover:bg-rose-50 transition-all group text-left mt-4">
+                            <div class="flex items-center space-x-4">
+                                <div class="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white transition-colors">
+                                    <i data-lucide="user-x" class="w-5 h-5"></i>
+                                </div>
+                                <span class="font-bold text-rose-700 text-sm">Request Account Deletion</span>
+                            </div>
+                            <i data-lucide="chevron-right" class="w-4 h-4 text-rose-300 group-hover:text-rose-600 transition-colors"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Column: Login History -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-3xl shadow-sm overflow-hidden border border-slate-100 h-full">
+                    <div class="p-8 border-b border-slate-50 flex items-center justify-between">
+                        <div>
+                            <h3 class="text-xl sm:text-2xl font-black text-slate-900 flex items-center tracking-tight">
+                                <i data-lucide="history" class="w-6 h-6 sm:w-7 sm:h-7 mr-3 text-cuz-blue"></i>
+                                Login Ledger
+                            </h3>
+                            <p class="text-sm text-slate-400 mt-1 font-medium">Real-time audit of account access</p>
+                        </div>
+                        <button data-action="loadDashboardData()" class="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-cuz-blue" title="Refresh Log">
+                            <i data-lucide="refresh-ccw" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- Desktop Table -->
+                    <div class="hidden md:block overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-slate-50/50">
+                                <tr>
+                                    <th class="text-left text-[10px] font-black text-slate-400 uppercase tracking-widest px-8 py-4">Security Action</th>
+                                    <th class="text-left text-[10px] font-black text-slate-400 uppercase tracking-widest px-8 py-4">Origin IP</th>
+                                    <th class="text-left text-[10px] font-black text-slate-400 uppercase tracking-widest px-8 py-4">Terminal</th>
+                                    <th class="text-left text-[10px] font-black text-slate-400 uppercase tracking-widest px-8 py-4">Timestamp</th>
+                                </tr>
+                            </thead>
+                            <tbody id="loginHistoryTable" class="divide-y divide-slate-50">
+                                <!-- Populated by JavaScript -->
+                                <tr>
+                                    <td colspan="4" class="px-8 py-20 text-center">
+                                        <div class="flex flex-col items-center">
+                                            <div class="animate-spin rounded-full h-10 w-10 border-4 border-slate-100 border-t-cuz-blue mb-4"></div>
+                                            <p class="text-slate-400 font-bold text-sm tracking-wide">Syncing Security Logs...</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Mobile Cards -->
+                    <div class="md:hidden divide-y divide-slate-50" id="loginHistoryMobile">
+                        <div class="p-8 text-center">
+                            <div class="animate-spin rounded-full h-8 w-8 border-4 border-slate-100 border-t-cuz-blue mx-auto mb-4"></div>
+                            <p class="text-slate-400 font-bold text-sm">Syncing...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+
+    <!-- Footer -->
+    <footer class="footer-bg text-white py-24 w-full relative overflow-hidden">
+        <div class="footer-orbs pointer-events-none absolute inset-0 z-0">
+            <div class="footer-orb" style="width:300px;height:300px;top:5%;left:-5%;--d:25s;--del:0s;"></div>
+            <div class="footer-orb" style="width:200px;height:200px;bottom:10%;right:5%;--d:18s;--del:-6s;"></div>
+            <div class="footer-orb" style="width:150px;height:150px;top:40%;left:55%;--d:14s;--del:-12s;"></div>
+            <div class="footer-orb" style="width:120px;height:120px;bottom:30%;left:20%;--d:20s;--del:-3s;"></div>
+        </div>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <div class="grid md:grid-cols-3 gap-16">
+                <!-- Company Info -->
+                <div class="space-y-10">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-2xl">
+                            <i data-lucide="shield-check" class="w-7 h-7 text-cuz-blue"></i>
+                        </div>
+                        <span class="text-3xl font-black tracking-tighter">SecureAuth</span>
+                    </div>
+                    <p class="text-slate-400 leading-relaxed text-lg font-medium">
+                        Enterprise-grade two-factor authentication and flood protection suite. Engineered for absolute protection.
+                    </p>
+                    <div class="flex space-x-5">
+                        <a href="https://github.com/MetaADRI" target="_blank" class="footer-social-icon w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center hover:bg-white hover:text-cuz-blue-dark transition-all duration-500 hover:-translate-y-2 shadow-lg">
+                            <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.372.79 1.102.79 2.222v3.293c0 .319.21.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+                        </a>
+                        <a href="https://www.linkedin.com/in/bwalya-adrian-mange-4101a8396" target="_blank" class="footer-social-icon w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center hover:bg-white hover:text-cuz-blue-dark transition-all duration-500 hover:-translate-y-2 shadow-lg">
+                            <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.6 1.437-1.237 2.673-1.237 2.856 0 3.385 1.88 3.385 4.327v6.804zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                        </a>
+                        <a href="mailto:adrianmange00@gmail.com" class="footer-social-icon w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center hover:bg-white hover:text-cuz-blue-dark transition-all duration-500 hover:-translate-y-2 shadow-lg">
+                            <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M24 5.457v13.909c0 .904-.732 1.634-1.634 1.634h-20.732c-.902 0-1.634-.73-1.634-1.634v-13.909l12 7 12-7zm-12 4.671l-10.756-6.271c-.269.172-.444.47-.444.808v.537l11.2 6.533 11.2-6.533v-.537c0-.338-.175-.636-.444-.808l-10.756 6.271z"/></svg>
+                        </a>
+                        <a href="https://mypage01.vercel.app/" target="_blank" class="footer-social-icon w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center hover:bg-white hover:text-cuz-blue-dark transition-all duration-500 hover:-translate-y-2 shadow-lg" title="Personal Website">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- Contact Section -->
+                <div class="space-y-10">
+                    <h4 class="footer-divider text-xl font-black border-b border-slate-800 pb-5 uppercase tracking-widest text-slate-500">Global Contact</h4>
+                    <ul class="space-y-8">
+                        <li>
+                            <a href="mailto:adrianmange00@gmail.com" class="group flex items-center space-x-5 text-slate-400 hover:text-white transition-all duration-300">
+                                <div class="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center group-hover:bg-cuz-blue-light transition-all duration-500 group-hover:scale-110">
+                                    <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M24 5.457v13.909c0 .904-.732 1.634-1.634 1.634h-20.732c-.902 0-1.634-.73-1.634-1.634v-13.909l12 7 12-7zm-12 4.671l-10.756-6.271c-.269.172-.444.47-.444.808v.537l11.2 6.533 11.2-6.533v-.537c0-.338-.175-.636-.444-.808l-10.756 6.271z"/></svg>
+                                </div>
+                                <span class="text-lg font-bold">adrianmange00@gmail.com</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="https://www.linkedin.com/in/bwalya-adrian-mange-4101a8396" target="_blank" class="group flex items-center space-x-5 text-slate-400 hover:text-white transition-all duration-300">
+                                <div class="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center group-hover:bg-cuz-blue-light transition-all duration-500 group-hover:scale-110">
+                                    <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.6 1.437-1.237 2.673-1.237 2.856 0 3.385 1.88 3.385 4.327v6.804zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                                </div>
+                                <span class="text-lg font-bold">Professional LinkedIn</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="https://github.com/MetaADRI" target="_blank" class="group flex items-center space-x-5 text-slate-400 hover:text-white transition-all duration-300">
+                                <div class="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center group-hover:bg-cuz-blue-light transition-all duration-500 group-hover:scale-110">
+                                    <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.372.79 1.102.79 2.222v3.293c0 .319.21.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+                                </div>
+                                <span class="text-lg font-bold">GitHub Archive</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="https://mypage01.vercel.app/" target="_blank" class="group flex items-center space-x-5 text-slate-400 hover:text-white transition-all duration-300">
+                                <div class="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center group-hover:bg-cuz-blue-light transition-all duration-500 group-hover:scale-110">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                                </div>
+                                <span class="text-lg font-bold">Personal Website</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <!-- Institution Info -->
+                <div class="space-y-10">
+                    <h4 class="footer-divider text-xl font-black border-b border-slate-800 pb-5 uppercase tracking-widest text-slate-500">Research & Development</h4>
+                    <div class="footer-card bg-slate-800/40 p-8 rounded-[2rem] border border-slate-800 hover:border-cuz-blue-light transition-all duration-500 shadow-inner group">
+                        <div class="space-y-4">
+                            <p class="text-white font-black text-2xl tracking-tight">Bwalya Adrian Mange</p>
+                            <div class="space-y-2">
+                                <p class="text-slate-400 font-bold flex items-center"><i data-lucide="hash" class="w-4 h-4 mr-2"></i> 106-293</p>
+                                <p class="text-slate-400 font-bold flex items-center"><i data-lucide="graduation-cap" class="w-4 h-4 mr-2"></i> Cavendish University</p>
+                                <p class="text-slate-500 italic font-medium">BSc Computing Capstone</p>
+                            </div>
+                        </div>
+                        <div class="mt-8 pt-8 border-t border-slate-700 flex justify-between items-center">
+                            <span class="footer-badge inline-flex items-center px-4 py-2 bg-cuz-blue-light/20 text-cuz-blue-light rounded-2xl text-[10px] font-black uppercase tracking-widest">
+                                <i data-lucide="shield" class="w-3 h-3 mr-2"></i>
+                                Cybersecurity
+                            </span>
+                            <div class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                                <div class="w-2 h-2 bg-emerald-500 rounded-full status-pulse"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="footer-divider border-t border-slate-800 mt-24 pt-12 flex flex-col md:flex-row justify-between items-center text-slate-500 text-[11px] font-black uppercase tracking-[0.2em]">
+                <p>&copy; 2026 SECUREAUTH INFRASTRUCTURE. ALL RIGHTS RESERVED.</p>
+                <div class="flex space-x-8 mt-8 md:mt-0">
+                    <a href="#" class="hover:text-white transition-colors">Audit Protocol</a>
+                    <a href="#" class="hover:text-white transition-colors">Privacy Shield</a>
+                    <a href="#" class="hover:text-white transition-colors">Legal Terms</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+    
+    <!-- Initialize Lucide Icons -->
+    <script src="js/auth.js"></script>
+    <script>
+        // Initialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+        
+        // Check authentication
+        const accessToken = localStorage.getItem('accessToken');
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        
+        if (!accessToken || !user.email) {
+            window.location.href = 'login.html';
+        }
+        
+        // Demo mode banner
+        const demoMode = localStorage.getItem('demoMode');
+        const demoBanner = document.getElementById('demoBanner');
+        if (demoMode === 'true' && demoBanner) {
+            demoBanner.classList.remove('hidden');
+        }
+
+        function exitDemo() {
+            localStorage.removeItem('demoMode');
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('user');
+            localStorage.removeItem('tempToken');
+            window.location.href = 'demo.html';
+        }
+        
+        // Mobile menu toggle
+        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+        const mobileMenu = document.getElementById('mobile-menu');
+        
+        mobileMenuBtn.addEventListener('click', () => {
+            mobileMenu.classList.toggle('open');
+        });
+        
+        // Load user data
+        function loadUserData() {
+            document.getElementById('userNameDisplay').textContent = user.fullName || user.email;
+            document.getElementById('userNameDisplayMobile').textContent = user.fullName || user.email;
+            document.getElementById('welcomeName').textContent = user.fullName?.split(' ')[0] || 'Security User';
+            document.getElementById('fullName').textContent = user.fullName || '-';
+            document.getElementById('email').textContent = user.email || '-';
+            document.getElementById('userId').textContent = user.id || '-';
+            
+            // Format created date
+            if (user.createdAt) {
+                const date = new Date(user.createdAt);
+                document.getElementById('createdAt').textContent = 'Secure Since ' + date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+            }
+        }
+        
+        // Fetch dashboard data
+        async function loadDashboardData() {
+            try {
+                const [dashRes, historyRes] = await Promise.all([
+                    fetch('/api/dashboard', {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    }),
+                    fetch('/api/login-history', {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    })
+                ]);
+                
+                if (dashRes.ok) {
+                    const data = await dashRes.json();
+                    
+                    document.getElementById('totalUsers').textContent = (data.stats?.totalUsers || 0).toLocaleString();
+                    
+                    if (data.stats?.loginTime) {
+                        const loginDate = new Date(data.stats.loginTime);
+                        document.getElementById('lastLogin').textContent = loginDate.toLocaleTimeString('en-US', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                    }
+                } else if (dashRes.status === 401) {
+                    performLogout();
+                    return;
+                }
+                
+                if (historyRes.ok) {
+                    const historyData = await historyRes.json();
+                    updateLoginHistory(historyData.loginHistory || []);
+                }
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+            }
+        }
+        
+        // Update login history table
+        function updateLoginHistory(history) {
+            const tableBody = document.getElementById('loginHistoryTable');
+            const mobileContainer = document.getElementById('loginHistoryMobile');
+            
+            if (!history || history.length === 0) {
+                const emptyMessage = '<tr><td colspan="4" class="px-8 py-20 text-center text-slate-400 font-bold">No security events recorded</td></tr>';
+                tableBody.innerHTML = emptyMessage;
+                mobileContainer.innerHTML = '<div class="p-8 text-center text-slate-400 font-bold">No security events recorded</div>';
+                return;
+            }
+            
+            // Take last 10 entries, reverse to show newest first
+            const recentHistory = history.slice(-10).reverse();
+            
+            // Desktop table rows
+            let tableHTML = '';
+            recentHistory.forEach(entry => {
+                const success = entry.action === 'LOGIN_SUCCESS' || entry.action === '2fa_success' || entry.action === 'register';
+                const statusColor = success ? 'bg-emerald-500' : 'bg-rose-500';
+                const actionText = entry.action.replace(/_/g, ' ').toUpperCase();
+                
+                const date = new Date(entry.timestamp);
+                const timeStr = date.toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                tableHTML += `
+                    <tr class="table-row transition-colors">
+                        <td class="px-8 py-5">
+                            <div class="flex items-center">
+                                <div class="w-2.5 h-2.5 ${statusColor} rounded-full mr-4 shadow-sm"></div>
+                                <span class="text-sm font-bold text-slate-900 tracking-tight">${actionText}</span>
+                            </div>
+                        </td>
+                        <td class="px-8 py-5 text-sm text-slate-500 font-mono font-bold tracking-tighter">${entry.ip}</td>
+                        <td class="px-8 py-5 text-sm text-slate-500 font-medium truncate max-w-[200px]">${entry.device || 'Unknown'}</td>
+                        <td class="px-8 py-5 text-sm text-slate-400 font-bold">${timeStr}</td>
+                    </tr>
+                `;
+            });
+            tableBody.innerHTML = tableHTML;
+            
+            // Mobile cards
+            let mobileHTML = '';
+            recentHistory.forEach(entry => {
+                const success = entry.action === 'LOGIN_SUCCESS' || entry.action === '2fa_success' || entry.action === 'register';
+                const statusColor = success ? 'bg-emerald-500' : 'bg-rose-500';
+                const actionText = entry.action.replace(/_/g, ' ').toUpperCase();
+                
+                const date = new Date(entry.timestamp);
+                const timeStr = date.toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                mobileHTML += `
+                    <div class="p-6 hover:bg-slate-50 transition-colors">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center">
+                                <div class="w-2.5 h-2.5 ${statusColor} rounded-full mr-3"></div>
+                                <span class="font-black text-slate-900 text-xs tracking-widest">${actionText}</span>
+                            </div>
+                            <span class="text-[10px] text-slate-400 font-black">${timeStr}</span>
+                        </div>
+                        <div class="flex flex-col space-y-1">
+                            <p class="text-xs text-slate-500 font-mono font-bold tracking-tight">${entry.ip}</p>
+                            <p class="text-[11px] text-slate-400 font-medium truncate">${entry.device || 'Unknown System'}</p>
+                        </div>
+                    </div>
+                `;
+            });
+            mobileContainer.innerHTML = mobileHTML;
+        }
+        
+        // Logout functionality
+        function performLogout() {
+            console.log('Logging out...');
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('user');
+            localStorage.removeItem('tempToken');
+            localStorage.removeItem('userEmail');
+            localStorage.removeItem('adminMode');
+            window.location.href = 'login.html';
+        }
+        
+        // Attach logout listeners
+        const logoutBtnDesktop = document.getElementById('logoutBtnDesktop');
+        const logoutBtnMobile = document.getElementById('logoutBtnMobile');
+        
+        if (logoutBtnDesktop) logoutBtnDesktop.addEventListener('click', performLogout);
+        if (logoutBtnMobile) logoutBtnMobile.addEventListener('click', performLogout);
+        
+        // Deletion request
+        const deleteRequestBtn = document.getElementById('deleteRequestBtn');
+        if (deleteRequestBtn) {
+            deleteRequestBtn.addEventListener('click', async () => {
+                if (confirm('Are you sure you want to request account deletion? This action cannot be undone.')) {
+                    try {
+                        const response = await fetch('/api/request-deletion', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        
+                        if (response.ok) {
+                            alert('Deletion request sent to administrator.');
+                        } else {
+                            alert('Failed to send request. Please try again.');
+                        }
+                    } catch (error) {
+                        console.error('Error requesting deletion:', error);
+                    }
+                }
+            });
+        }
+        
+        // Load data
+        loadUserData();
+        loadDashboardData();
+
+        // Auto-hide nav on scroll
+        let lastScrollY = window.scrollY;
+        window.addEventListener('scroll', () => {
+            const nav = document.querySelector('nav');
+            if (!nav) return;
+            if (window.scrollY > lastScrollY && window.scrollY > 80) {
+                nav.style.transform = 'translateY(-100%)';
+            } else {
+                nav.style.transform = 'translateY(0)';
+            }
+            lastScrollY = window.scrollY;
+        });
+
+        // CSP-safe click delegation
+        document.addEventListener('click', function(e) {
+            var cardEl = e.target.closest('[data-card-idx]');
+            if (cardEl && typeof ariaCardsData !== 'undefined' && ariaCardsData.length > 0) {
+                var idx = parseInt(cardEl.getAttribute('data-card-idx'));
+                var c = ariaCardsData[idx];
+                if (c) { ariaShowCardDetail(c.title, c.desc, c.threat); return; }
+            }
+            var btn = e.target.closest('[data-action]');
+            if (!btn) return;
+            var action = (btn.getAttribute('data-action') || '').trim();
+            var argsAttr = btn.getAttribute('data-args');
+            if (argsAttr !== null) { if (typeof window[action] === 'function') { window[action](argsAttr); } return; }
+            if (btn.hasAttribute('data-self')) { if (typeof window[action] === 'function') { window[action](btn); } return; }
+            if (typeof window[action] === 'function') { window[action](); return; }
+            var m1 = action.match(/^(\w[\w.]*)\(\)$/);
+            if (m1 && typeof window[m1[1]] === 'function') { window[m1[1]](); return; }
+            var m2 = action.match(/^(\w[\w.]*)\(\s*'([^']*)'\s*(?:,\s*'([^']*)'\s*)?\)$/);
+            if (m2 && typeof window[m2[1]] === 'function') { var a = [m2[2]]; if (m2[3] !== undefined) a.push(m2[3]); window[m2[1]].apply(null, a); return; }
+            if (action.match(/^alert\s*\(/)) { var m = action.match(/['"]([^'"]+)['"]/); if (m) alert(m[1]); return; }
+            var m4 = action.match(/^window\.location\.href\s*=\s*'([^']+)'$/);
+            if (m4) { window.location.href = m4[1]; return; }
+            var m5 = action.match(/^(\w[\w.]*)\(\s*'([^']*)'\s*(?:,\s*'([^']*)'\s*)?\);\s*return\s+false;?$/);
+            if (m5 && typeof window[m5[1]] === 'function') { var a = [m5[2]]; if (m5[3] !== undefined) a.push(m5[3]); window[m5[1]].apply(null, a); return; }
+            console.warn('CSP action unhandled:', action);
+        });
+    </script>
+</body>
+</html>
