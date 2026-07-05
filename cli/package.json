@@ -1,0 +1,30 @@
+{
+  "name": "@metaadri/secureauth",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "1.1.0",
+  "description": "SecureAuth CLI - Add enterprise authentication to any Express app in one command",
+  "bin": {
+    "secureauth": "bin/cli.js"
+  },
+  "keywords": [
+    "secureauth",
+    "authentication",
+    "2fa",
+    "totp",
+    "jwt",
+    "security",
+    "express",
+    "cli"
+  ],
+  "author": "Bwalya Adrian Mange",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "enquirer": "^2.4.1"
+  }
+}
