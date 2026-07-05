@@ -111,8 +111,13 @@ module.exports = {
   db: {
     query: (text, params) => {
       const stmt = db.prepare(text);
-      const rows = params ? stmt.all(...params) : stmt.all();
-      return { rows };
+      const sql = text.trim().toUpperCase();
+      if (sql.startsWith('SELECT')) {
+        const rows = params ? stmt.all(...params) : stmt.all();
+        return { rows };
+      }
+      const info = params ? stmt.run(...params) : stmt.run();
+      return { rows: [], changes: info.changes };
     }
   }
 };

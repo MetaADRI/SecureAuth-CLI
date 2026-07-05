@@ -8,7 +8,6 @@ const loginLimiter = createRateLimiter(5, 15);
 
 router.post('/register', authController.register);
 router.post('/login', loginLimiter, authController.loginStep1);
-router.post('/demo/login', authController.demoLogin);
 router.post('/verify-2fa', loginLimiter, authController.verifyTOTP);
 router.get('/dashboard', checkAndRefreshToken, authController.getDashboard);
 router.get('/login-history', checkAndRefreshToken, authController.getLoginHistory);

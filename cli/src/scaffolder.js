@@ -30,6 +30,7 @@ const LOCKOUT_CHECK_CODE = `
 
 const LOCKOUT_INCREMENT_CODE = `
       const failedAttempts = await userModel.incrementFailedAttempts(user.id);
+      const remaining = MAX_FAILED_ATTEMPTS - failedAttempts;
 `;
 
 const LOCKOUT_TRIGGER_CODE = `

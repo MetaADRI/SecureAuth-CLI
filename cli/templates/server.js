@@ -1,7 +1,7 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const helmet = require('helmet');
 
 const authRoutes = require('./routes/authRoutes');
@@ -62,16 +62,15 @@ app.get('/', (req, res) => {
 
 let dbReady = false;
 
-initDatabase()
-  .then(async () => {
-    await seedAdminUser();
-    await seedDemoUser();
-    dbReady = true;
-    console.log('Database initialized and seeded');
-  })
-  .catch(err => {
-    console.error('Database initialization failed:', err.message);
-  });
+try {
+  initDatabase();
+  seedAdminUser();
+  seedDemoUser();
+  dbReady = true;
+  console.log('Database initialized and seeded');
+} catch (err) {
+  console.error('Database initialization failed:', err.message);
+}
 
 app.use((req, res, next) => {
   if (dbReady) return next();
