@@ -28,7 +28,7 @@ function install(cwd, missingDeps, answers) {
     const child = spawn('npm', args, {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
-      shell: true
+      shell: false
     });
 
     let output = '';

@@ -3,10 +3,12 @@ const path = require('path');
 
 const REQUIRED_DIRS = ['controllers', 'routes', 'middleware', 'models', 'utils', 'database'];
 const SECUREAUTH_DEPS = [
-  'express', 'bcryptjs', 'jsonwebtoken', 'helmet',
+  'express', 'jsonwebtoken', 'helmet',
   'express-rate-limit', 'express-slow-down', 'speakeasy',
   'qrcode', 'dotenv', 'cors', 'uuid'
 ];
+
+const BCRYPT_ALIASES = ['bcryptjs', 'bcrypt'];
 
 function detect(dir) {
   const report = {
@@ -49,7 +51,11 @@ function detect(dir) {
       } catch {}
     }
 
-    report.missingDeps = SECUREAUTH_DEPS.filter(d => !(d in allDeps));
+    const hasBcrypt = BCRYPT_ALIASES.some(d => d in allDeps);
+    report.missingDeps = SECUREAUTH_DEPS.filter(d => {
+      if (d === 'bcryptjs') return !hasBcrypt;
+      return !(d in allDeps);
+    });
   }
 
   const existingDirs = [];

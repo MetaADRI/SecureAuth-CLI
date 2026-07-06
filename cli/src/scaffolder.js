@@ -121,6 +121,40 @@ function scaffold(targetDir, answers) {
   return fileCount;
 }
 
+function postProcessExisting(targetDir) {
+  const serverFiles = ['server.js', 'app.js', 'index.js'];
+  let entryContent = null;
+  let entryPath = null;
+
+  for (const f of serverFiles) {
+    const p = path.join(targetDir, f);
+    if (fs.existsSync(p)) {
+      entryContent = fs.readFileSync(p, 'utf-8');
+      entryPath = p;
+      break;
+    }
+  }
+  if (!entryContent) return;
+
+  const mods = [];
+
+  const dotenvRegex = /require\(['"]dotenv['"]\)\.config\(\);/;
+  if (!dotenvRegex.test(entryContent) && !entryContent.includes("require('dotenv')")) {
+    const firstRequireEnd = entryContent.indexOf(';') + 1;
+    if (firstRequireEnd > 0) {
+      mods.push({ pos: 0, end: firstRequireEnd, insert: `const path = require('path');\nrequire('dotenv').config({ path: path.join(__dirname, '.env') });\n` });
+    }
+  }
+
+  if (mods.length > 0) {
+    for (const m of mods.reverse()) {
+      entryContent = entryContent.slice(0, m.end) + '\n' + m.insert + entryContent.slice(m.end);
+    }
+    fs.writeFileSync(entryPath, entryContent, 'utf-8');
+    logger.info(`Patched ${path.basename(entryPath)} with dotenv config`);
+  }
+}
+
 function postProcess(targetDir) {
   const files = {
     'controllers/authController.js': [
@@ -170,6 +204,8 @@ function postProcess(targetDir) {
       // skip unreadable files
     }
   }
+
+  postProcessExisting(targetDir);
 }
 
 function collectFiles(dir) {

@@ -60,18 +60,78 @@ function buildEnvContent(answers) {
   return lines.join('\n');
 }
 
+function mergeEnvContent(existingContent, newContent) {
+  const existingLines = existingContent.split('\n');
+  const existingKeys = new Set();
+  let existingDbUrl = null;
+
+  for (const line of existingLines) {
+    const eqIdx = line.indexOf('=');
+    if (eqIdx !== -1) {
+      const key = line.slice(0, eqIdx).trim();
+      existingKeys.add(key);
+      if (key === 'DATABASE_URL') {
+        existingDbUrl = line.slice(eqIdx + 1).trim();
+      }
+    }
+  }
+
+  const newLines = newContent.split('\n');
+  const merged = [];
+
+  if (existingDbUrl) {
+    for (const line of newLines) {
+      if (line.startsWith('DATABASE_URL=')) {
+        continue;
+      }
+      merged.push(line);
+    }
+    const dbSectionStart = merged.findIndex(l => l.includes('# Database'));
+    if (dbSectionStart !== -1) {
+      merged.splice(dbSectionStart, 0, `DATABASE_URL=${existingDbUrl}`);
+    } else {
+      merged.push('');
+      merged.push('# Database Configuration (preserved from existing .env)');
+      merged.push(`DATABASE_URL=${existingDbUrl}`);
+    }
+  } else {
+    merged.push(...newLines);
+  }
+
+  for (const key of existingKeys) {
+    if (key === 'DATABASE_URL') continue;
+    const existingLine = existingLines.find(l => l.startsWith(key + '='));
+    if (existingLine) {
+      const newIdx = merged.findIndex(l => l.startsWith(key + '='));
+      if (newIdx !== -1) {
+        merged[newIdx] = existingLine;
+      }
+    }
+  }
+
+  return merged.join('\n');
+}
+
 function writeEnvFile(targetDir, answers) {
   const fs = require('fs');
   const path = require('path');
   const envPath = path.join(targetDir, '.env');
 
+  const newContent = buildEnvContent(answers);
+
   if (fs.existsSync(envPath)) {
-    logger.warn('.env already exists — skipping (delete it first to regenerate)');
-    return false;
+    const existingContent = fs.readFileSync(envPath, 'utf-8');
+    const merged = mergeEnvContent(existingContent, newContent);
+    if (merged !== existingContent) {
+      fs.writeFileSync(envPath, merged, 'utf-8');
+      logger.success('.env updated with SecureAuth settings (preserved existing values)');
+    } else {
+      logger.warn('.env already exists — settings are up to date');
+    }
+    return true;
   }
 
-  const content = buildEnvContent(answers);
-  fs.writeFileSync(envPath, content, 'utf-8');
+  fs.writeFileSync(envPath, newContent, 'utf-8');
   logger.success('.env created with secure defaults');
   return true;
 }

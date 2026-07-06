@@ -6,6 +6,7 @@ const { printReport } = require('./reporter');
 const { install } = require('./installer');
 const { writeEnvFile } = require('./generator');
 const { scaffold } = require('./scaffolder');
+const { patchExisting } = require('./patcher');
 const {
   askProjectType,
   askProjectName,
@@ -13,6 +14,7 @@ const {
   askPort,
   askJwtSecret,
   askFeatures,
+  askInstallMode,
   askConfirm
 } = require('./questions');
 
@@ -101,6 +103,12 @@ async function init(defaults) {
   logger.info(logger.dim('Not sure which features to pick? Visit https://secureauth106293.netlify.app/ for guidance.'));
   answers.features = await askFeatures(defaults);
 
+  if (projectType === 'existing') {
+    answers.installMode = await askInstallMode(defaults);
+  } else {
+    answers.installMode = 'scaffold';
+  }
+
   logger.info('');
   const confirmed = await askConfirm(defaults);
   if (!confirmed) {
@@ -113,16 +121,23 @@ async function init(defaults) {
   logger.info(`Database:  ${answers.database}`);
   logger.info(`Port:      ${answers.port}`);
   logger.info(`Features:  ${answers.features.join(', ') || 'none'}`);
+  if (projectType === 'existing') {
+    logger.info(`Mode:      ${answers.installMode === 'patch' ? 'Patch existing login route' : 'Add alongside existing auth'}`);
+  }
 
   logger.info('');
 
-  await install(targetDir, report.missingDeps, answers);
-
-  const filesCreated = scaffold(targetDir, answers);
-
-  writeEnvFile(targetDir, answers);
-
-  printSuccess(answers, filesCreated);
+  if (answers.installMode === 'patch') {
+    await install(targetDir, report.missingDeps, answers);
+    patchExisting(targetDir, answers);
+    writeEnvFile(targetDir, answers);
+    printSuccess(answers, 0);
+  } else {
+    await install(targetDir, report.missingDeps, answers);
+    const filesCreated = scaffold(targetDir, answers);
+    writeEnvFile(targetDir, answers);
+    printSuccess(answers, filesCreated);
+  }
 }
 
 module.exports = { init };

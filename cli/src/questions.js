@@ -98,6 +98,21 @@ async function askFeatures(defaults) {
   return features;
 }
 
+async function askInstallMode(defaults) {
+  if (defaults) return 'patch';
+  const { mode } = await prompt({
+    type: 'select',
+    name: 'mode',
+    message: 'How would you like to install SecureAuth?',
+    choices: [
+      { name: 'patch', message: 'Patch existing login route with account lockout (Recommended)' },
+      { name: 'alongside', message: 'Add alongside existing auth (mount at /api/secure-auth)' }
+    ],
+    initial: 0
+  });
+  return mode;
+}
+
 async function askConfirm(defaults) {
   if (defaults) return true;
   const { confirmed } = await prompt({
@@ -117,5 +132,6 @@ module.exports = {
   askPort,
   askJwtSecret,
   askFeatures,
+  askInstallMode,
   askConfirm
 };
