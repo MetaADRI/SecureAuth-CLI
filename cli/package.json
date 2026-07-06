@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "1.2.3",
+  "version": "1.2.5",
   "description": "SecureAuth CLI - Add enterprise authentication to any Express app in one command",
   "bin": {
     "secureauth": "bin/cli.js"

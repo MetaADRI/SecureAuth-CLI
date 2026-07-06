@@ -188,14 +188,12 @@ function generateMigrationSql(dbType) {
   if (dbType === 'postgres') {
     return `-- SecureAuth: Add account lockout columns
 ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS last_failed_login TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
 `;
   }
   return `-- SecureAuth: Add account lockout columns
-ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER DEFAULT 0;
-ALTER TABLE users ADD COLUMN locked_until TEXT;
-ALTER TABLE users ADD COLUMN last_failed_login TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TEXT;
 `;
 }
 
@@ -218,7 +216,7 @@ function addEnvVars(content) {
 }
 
 function addHelper(content) {
-  const loginRouteRegex = /(?:router|app)\s*\.\s*(?:post|get)\s*\(\s*['"](?:\/api\/)?(?:login|signin)['"]/;
+  const loginRouteRegex = /(?:router|app)\s*\.\s*(?:post|get)\s*\(\s*['"](?:\/(?:api\/)?)?(?:login|signin)['"]/;
   const loginMatch = content.match(loginRouteRegex);
   if (!loginMatch) return { content, modified: false };
 
@@ -253,27 +251,37 @@ function addIncrementReset(content, dbVar, paramStyle) {
   const incrementBlock = generateIncrementBlock(dbVar, paramStyle);
 
   const afterBrace = content.slice(blockStart + 1);
-  const firstReturn = afterBrace.search(/\breturn\s+res\.status\(401\)/);
-  if (firstReturn === -1) return { content, modified: false };
+  const errorResponsePatterns = [
+    /\breturn\s+res\.status\(40[13]\)/,
+    /\bres\.status\(40[13]\)/,
+  ];
+  let firstError = -1;
+  for (const p of errorResponsePatterns) {
+    const m = afterBrace.search(p);
+    if (m !== -1 && (firstError === -1 || m < firstError)) {
+      firstError = m;
+    }
+  }
+  if (firstError === -1) return { content, modified: false };
 
-  const insertPos = blockStart + 1 + firstReturn;
+  const insertPos = blockStart + 1 + firstError;
   content = content.slice(0, insertPos) + incrementBlock + content.slice(insertPos);
 
   const closingBraceIndex = findMatchingBrace(content, blockStart);
   if (closingBraceIndex === -1) return { content, modified: false };
 
   const afterInvalidBlock = content.slice(closingBraceIndex + 1);
-  const successPwMatch = afterInvalidBlock.match(/if\s*\(!is(?:Valid|PasswordValid)\)/);
-  if (successPwMatch) {
-    const secondBlockStart = afterInvalidBlock.indexOf('{', successPwMatch.index);
+  const secondInvalidMatch = afterInvalidBlock.match(/if\s*\(\s*!is(?:Valid|PasswordValid)\s*\)/);
+  if (secondInvalidMatch) {
+    const secondBlockStart = afterInvalidBlock.indexOf('{', secondInvalidMatch.index);
     if (secondBlockStart !== -1) {
       const secondClosing = findMatchingBrace(afterInvalidBlock, secondBlockStart);
       if (secondClosing !== -1) {
         const afterSecond = afterInvalidBlock.slice(secondClosing + 1);
         const resetBlock = generateResetBlock(dbVar, paramStyle);
-        const successMatch = afterSecond.match(/\breturn\s+res\.status\(2\d{2}\)/);
-        if (successMatch) {
-          const insertAfterSecond = closingBraceIndex + 1 + secondClosing + 1 + successMatch.index;
+        const successPos = findSuccessResponse(afterSecond);
+        if (successPos !== -1) {
+          const insertAfterSecond = closingBraceIndex + 1 + secondClosing + 1 + successPos;
           content = content.slice(0, insertAfterSecond) + resetBlock + content.slice(insertAfterSecond);
           return { content, modified: true };
         }
@@ -281,21 +289,37 @@ function addIncrementReset(content, dbVar, paramStyle) {
     }
   }
 
-  const afterInvalidBlockClean = content.slice(closingBraceIndex + 1);
-  const awaitCompareMatch = afterInvalidBlockClean.match(/await\s+bcrypt\.compare\(/);
-  if (awaitCompareMatch) {
+  const afterBlock = content.slice(closingBraceIndex + 1);
+  const hasAnotherCompare = afterBlock.match(/await\s+bcrypt\.compare\(/);
+  if (hasAnotherCompare) {
     return { content, modified: false };
   }
 
   const resetBlock = generateResetBlock(dbVar, paramStyle);
-  const successMatch = afterInvalidBlockClean.match(/\breturn\s+res\.status\(2\d{2}\)/);
-  if (successMatch) {
-    const insertPos3 = closingBraceIndex + 1 + successMatch.index;
-    content = content.slice(0, insertPos3) + resetBlock + content.slice(insertPos3);
+  const successPos = findSuccessResponse(afterBlock);
+  if (successPos !== -1) {
+    const insertPosReset = closingBraceIndex + 1 + successPos;
+    content = content.slice(0, insertPosReset) + resetBlock + content.slice(insertPosReset);
     return { content, modified: true };
   }
 
   return { content, modified: false };
+}
+
+function findSuccessResponse(str) {
+  const patterns = [
+    /\breturn\s+res\.status\(2\d{2}\)\s*\.\s*json\(/,
+    /\breturn\s+res\.json\(/,
+    /\bres\.status\(2\d{2}\)\s*\.\s*json\(/,
+    /\bres\.json\(/
+  ];
+  for (const p of patterns) {
+    const m = str.match(p);
+    if (m) {
+      return m.index;
+    }
+  }
+  return -1;
 }
 
 function addStatus423Return(content, dbVar, paramStyle) {
@@ -334,23 +358,17 @@ function findMatchingBrace(str, openPos) {
 }
 
 function writeMigration(targetDir, dbType) {
-  const migrationsDir = path.join(targetDir, 'migrations');
-  if (!fs.existsSync(migrationsDir)) {
-    fs.mkdirSync(migrationsDir, { recursive: true });
-  }
-
-  const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
-  const fileName = `${timestamp}_add_account_lockout.sql`;
-  const filePath = path.join(migrationsDir, fileName);
+  const fileName = 'migration_lockout.sql';
+  const filePath = path.join(targetDir, fileName);
 
   if (fs.existsSync(filePath)) {
-    logger.warn(`Migration ${fileName} already exists — skipping`);
+    logger.warn(`${fileName} already exists — skipping`);
     return null;
   }
 
   const sql = generateMigrationSql(dbType);
   fs.writeFileSync(filePath, sql, 'utf-8');
-  logger.success(`Created migration: migrations/${fileName}`);
+  logger.success(`Created ${fileName}`);
   return filePath;
 }
 

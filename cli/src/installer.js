@@ -1,10 +1,19 @@
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const { logger } = require('./logger');
 
 const DB_DRIVERS = {
   sqlite: 'better-sqlite3',
   postgres: 'pg'
 };
+
+function getNpmCommand() {
+  try {
+    execSync('npm.cmd --version', { stdio: 'ignore' });
+    return 'npm.cmd';
+  } catch {
+    return 'npm';
+  }
+}
 
 function install(cwd, missingDeps, answers) {
   return new Promise((resolve, reject) => {
@@ -24,11 +33,11 @@ function install(cwd, missingDeps, answers) {
     logger.info('');
 
     const args = ['install', ...allDeps, '--save', '--progress=false'];
+    const npmCmd = getNpmCommand();
 
-    const child = spawn('npm', args, {
+    const child = spawn(npmCmd, args, {
       cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      shell: false
+      stdio: ['ignore', 'pipe', 'pipe']
     });
 
     let output = '';
