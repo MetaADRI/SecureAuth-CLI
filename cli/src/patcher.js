@@ -95,6 +95,8 @@ function isAlreadyPatched(content) {
 function detectDbVariable(content) {
   const poolMatch = content.match(/(?:const|let|var)\s+(pool|db|client|query)\s*=\s*(?:new\s+(?:Pool|Client|Database)|require\()/i);
   if (poolMatch) return poolMatch[1];
+  const destructMatch = content.match(/(?:const|let|var)\s+\{\s*(pool|db|client|query)\s*\}\s*=\s*require\(/i);
+  if (destructMatch) return destructMatch[1];
   const exportMatch = content.match(/(?:const|let|var)\s+(\w+)\s*=\s*require\(['"]\.\.?\/[^'"]*db[^'"]*['"]\)/i);
   if (exportMatch) return exportMatch[1];
   return 'pool';
@@ -105,6 +107,11 @@ function detectParamStyle(content) {
   return 'sqlite';
 }
 
+function detectApiStyle(content) {
+  if (/\.prepare\s*\(/.test(content)) return 'native';
+  return 'wrapper';
+}
+
 function generateLockoutEnvBlock() {
   return `
 const MAX_FAILED_ATTEMPTS = parseInt(process.env.MAX_FAILED_ATTEMPTS) || 5;
@@ -112,8 +119,48 @@ const LOCKOUT_DURATION_MINUTES = parseInt(process.env.LOCKOUT_DURATION_MINUTES) 
 `;
 }
 
-function generateHelperBlock(dbVar, paramStyle) {
+function generateHelperBlock(dbVar, paramStyle, apiStyle) {
+  const isSqlite = paramStyle === 'sqlite';
   const p1 = paramStyle === 'postgres' ? '$1' : '?';
+
+  if (isSqlite && apiStyle === 'native') {
+    return `
+
+function checkAccountLockout(user) {
+  if (user.locked_until) {
+    const lockedUntil = new Date(user.locked_until);
+    if (lockedUntil > new Date()) {
+      const minutesLeft = Math.ceil((lockedUntil - new Date()) / 60000);
+      const err = new Error(\`Account locked due to too many failed attempts. Try again in \${minutesLeft} minute(s).\`);
+      err.statusCode = 423;
+      throw err;
+    } else {
+      ${dbVar}.prepare('UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_failed_login = NULL WHERE id = ?').run(user.id);
+    }
+  }
+}
+`;
+  }
+
+  if (isSqlite) {
+    return `
+
+function checkAccountLockout(user) {
+  if (user.locked_until) {
+    const lockedUntil = new Date(user.locked_until);
+    if (lockedUntil > new Date()) {
+      const minutesLeft = Math.ceil((lockedUntil - new Date()) / 60000);
+      const err = new Error(\`Account locked due to too many failed attempts. Try again in \${minutesLeft} minute(s).\`);
+      err.statusCode = 423;
+      throw err;
+    } else {
+      ${dbVar}.query('UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_failed_login = NULL WHERE id = ?', [user.id]);
+    }
+  }
+}
+`;
+  }
+
   return `
 
 async function checkAccountLockout(user, ${dbVar}) {
@@ -125,15 +172,27 @@ async function checkAccountLockout(user, ${dbVar}) {
       err.statusCode = 423;
       throw err;
     } else {
-      // Lock expired — reset failed attempts so user can log in cleanly
-      await ${dbVar}.query('UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_failed_login = NULL WHERE id = ${p1}', [user.id]);
+      await ${dbVar}.query('UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_failed_login = NULL WHERE id = $1', [user.id]);
     }
   }
 }
 `;
 }
 
-function generateLockoutCheckBlock(dbVar) {
+function generateLockoutCheckBlock(dbVar, paramStyle) {
+  const isSqlite = paramStyle === 'sqlite';
+  if (isSqlite) {
+    return `
+    try {
+      checkAccountLockout(user);
+    } catch (lockErr) {
+      return res.status(lockErr.statusCode || 423).json({
+        error: 'Account locked',
+        message: lockErr.message
+      });
+    }
+`;
+  }
   return `
     try {
       await checkAccountLockout(user, ${dbVar});
@@ -146,7 +205,7 @@ function generateLockoutCheckBlock(dbVar) {
 `;
 }
 
-function generateIncrementBlock(dbVar, paramStyle) {
+function generateIncrementBlock(dbVar, paramStyle, apiStyle) {
   if (paramStyle === 'postgres') {
     return `
     const failedResult = await ${dbVar}.query('UPDATE users SET failed_login_attempts = failed_login_attempts + 1, last_failed_login = $1 WHERE id = $2 RETURNING failed_login_attempts', [new Date().toISOString(), user.id]);
@@ -162,8 +221,27 @@ function generateIncrementBlock(dbVar, paramStyle) {
       });
     }
 `;
-  } else {
+  }
+
+  if (apiStyle === 'native') {
     return `
+    ${dbVar}.prepare('UPDATE users SET failed_login_attempts = failed_login_attempts + 1, last_failed_login = ? WHERE id = ?').run(new Date().toISOString(), user.id);
+    const failedRow = ${dbVar}.prepare('SELECT failed_login_attempts FROM users WHERE id = ?').get(user.id);
+    const failedAttempts = failedRow ? failedRow.failed_login_attempts : 1;
+    const remaining = MAX_FAILED_ATTEMPTS - failedAttempts;
+    if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
+      const lockedUntil = new Date();
+      lockedUntil.setMinutes(lockedUntil.getMinutes() + LOCKOUT_DURATION_MINUTES);
+      ${dbVar}.prepare('UPDATE users SET locked_until = ? WHERE id = ?').run(lockedUntil.toISOString(), user.id);
+      return res.status(423).json({
+        error: 'Account locked',
+        message: \`Account locked due to \${MAX_FAILED_ATTEMPTS} failed attempts. Try again in \${LOCKOUT_DURATION_MINUTES} minutes.\`
+      });
+    }
+`;
+  }
+
+  return `
     ${dbVar}.query('UPDATE users SET failed_login_attempts = failed_login_attempts + 1, last_failed_login = ? WHERE id = ?', [new Date().toISOString(), user.id]);
     const failedRow = ${dbVar}.query('SELECT failed_login_attempts FROM users WHERE id = ?', [user.id]);
     const failedAttempts = failedRow.rows[0] ? failedRow.rows[0].failed_login_attempts : 1;
@@ -178,13 +256,22 @@ function generateIncrementBlock(dbVar, paramStyle) {
       });
     }
 `;
-  }
 }
 
-function generateResetBlock(dbVar, paramStyle) {
+function generateResetBlock(dbVar, paramStyle, apiStyle) {
+  if (apiStyle === 'native') {
+    return `
+    ${dbVar}.prepare('UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_failed_login = NULL WHERE id = ?').run(user.id);
+`;
+  }
   const param = paramStyle === 'postgres' ? '$1' : '?';
-  return `
+  if (paramStyle === 'postgres') {
+    return `
     await ${dbVar}.query('UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_failed_login = NULL WHERE id = ${param}', [user.id]);
+`;
+  }
+  return `
+    ${dbVar}.query('UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_failed_login = NULL WHERE id = ?', [user.id]);
 `;
 }
 
@@ -193,11 +280,13 @@ function generateMigrationSql(dbType) {
     return `-- SecureAuth: Add account lockout columns
 ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_failed_login TIMESTAMPTZ;
 `;
   }
   return `-- SecureAuth: Add account lockout columns
 ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_failed_login TEXT;
 `;
 }
 
@@ -219,40 +308,45 @@ function addEnvVars(content) {
   return { content: generateLockoutEnvBlock() + '\n' + content, modified: true };
 }
 
-function addHelper(content, dbVar, paramStyle) {
+function addHelper(content, dbVar, paramStyle, apiStyle) {
   const loginRouteRegex = /(?:router|app)\s*\.\s*(?:post|get)\s*\(\s*['"](?:\/(?:api\/)?)?(?:login|signin)['"]/;
   const loginMatch = content.match(loginRouteRegex);
   if (!loginMatch) return { content, modified: false };
 
   const lineStart = content.lastIndexOf('\n', loginMatch.index) + 1;
-  const helper = generateHelperBlock(dbVar, paramStyle);
+  const helper = generateHelperBlock(dbVar, paramStyle, apiStyle);
   return {
     content: content.slice(0, lineStart) + helper + '\n' + content.slice(lineStart),
     modified: true
   };
 }
 
-function addLockoutCheck(content, dbVar) {
-  const compareRegex = /(?:const\s+)?is(?:Valid|PasswordValid)\s*=\s*await\s+bcrypt\.compare\(/;
-  const compareMatch = content.match(compareRegex);
+function addLockoutCheck(content, dbVar, paramStyle) {
+  const asyncCompareRegex = /(?:const\s+)?is(?:Valid|PasswordValid)\s*=\s*await\s+bcrypt\.compare\(/;
+  const syncCompareRegex = /(?:const\s+)?is(?:Valid|PasswordValid)\s*=\s*bcrypt\.compareSync\(/;
+
+  let compareMatch = content.match(asyncCompareRegex);
+  if (!compareMatch) {
+    compareMatch = content.match(syncCompareRegex);
+  }
   if (!compareMatch) return { content, modified: false };
 
   const lineStart = content.lastIndexOf('\n', compareMatch.index) + 1;
-  const lockoutCheck = generateLockoutCheckBlock(dbVar);
+  const lockoutCheck = generateLockoutCheckBlock(dbVar, paramStyle);
   return {
     content: content.slice(0, lineStart) + lockoutCheck + content.slice(lineStart),
     modified: true
   };
 }
 
-function addIncrementReset(content, dbVar, paramStyle) {
+function addIncrementReset(content, dbVar, paramStyle, apiStyle) {
   const invalidPwMatch = content.match(/if\s*\(\s*!is(?:Valid|PasswordValid)\s*\)/);
   if (!invalidPwMatch) return { content, modified: false };
 
   const blockStart = content.indexOf('{', invalidPwMatch.index);
   if (blockStart === -1) return { content, modified: false };
 
-  const incrementBlock = generateIncrementBlock(dbVar, paramStyle);
+  const incrementBlock = generateIncrementBlock(dbVar, paramStyle, apiStyle);
 
   const afterBrace = content.slice(blockStart + 1);
   const errorResponsePatterns = [
@@ -282,7 +376,7 @@ function addIncrementReset(content, dbVar, paramStyle) {
       const secondClosing = findMatchingBrace(afterInvalidBlock, secondBlockStart);
       if (secondClosing !== -1) {
         const afterSecond = afterInvalidBlock.slice(secondClosing + 1);
-        const resetBlock = generateResetBlock(dbVar, paramStyle);
+        const resetBlock = generateResetBlock(dbVar, paramStyle, apiStyle);
         const successPos = findSuccessResponse(afterSecond);
         if (successPos !== -1) {
           const insertAfterSecond = closingBraceIndex + 1 + secondClosing + 1 + successPos;
@@ -299,7 +393,7 @@ function addIncrementReset(content, dbVar, paramStyle) {
     return { content, modified: false };
   }
 
-  const resetBlock = generateResetBlock(dbVar, paramStyle);
+  const resetBlock = generateResetBlock(dbVar, paramStyle, apiStyle);
   const successPos = findSuccessResponse(afterBlock);
   if (successPos !== -1) {
     const insertPosReset = closingBraceIndex + 1 + successPos;
@@ -400,20 +494,21 @@ function patchExisting(targetDir, answers) {
 
   const dbType = detectDatabaseType(targetDir);
   const paramStyle = detectParamStyle(content);
+  const apiStyle = detectApiStyle(content);
   const dbVar = detectDbVariable(content);
 
-  logger.info(`Database type: ${dbType}, param style: ${paramStyle}, DB variable: \`${dbVar}\``);
+  logger.info(`Database type: ${dbType}, param style: ${paramStyle}, API style: ${apiStyle}, DB variable: \`${dbVar}\``);
 
   let result = addEnvVars(content);
   content = result.content;
 
-  result = addHelper(content, dbVar, paramStyle);
+  result = addHelper(content, dbVar, paramStyle, apiStyle);
   content = result.content;
 
-  result = addLockoutCheck(content, dbVar);
+  result = addLockoutCheck(content, dbVar, paramStyle);
   content = result.content;
 
-  result = addIncrementReset(content, dbVar, paramStyle);
+  result = addIncrementReset(content, dbVar, paramStyle, apiStyle);
   content = result.content;
 
   fs.writeFileSync(authFile, content, 'utf-8');
@@ -428,4 +523,4 @@ function patchExisting(targetDir, answers) {
   return { patched: true, authFile, migrationPath, dbType };
 }
 
-module.exports = { patchExisting, findEntryPoint, findAuthRouteFile, detectDatabaseType, detectDbVariable, detectParamStyle, isAlreadyPatched, writeMigration };
+module.exports = { patchExisting, findEntryPoint, findAuthRouteFile, detectDatabaseType, detectDbVariable, detectParamStyle, detectApiStyle, isAlreadyPatched, writeMigration };
