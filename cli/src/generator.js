@@ -61,55 +61,66 @@ function buildEnvContent(answers) {
 }
 
 function mergeEnvContent(existingContent, newContent) {
-  const existingLines = existingContent.split('\n');
-  const existingKeys = new Set();
-  let existingDbUrl = null;
+  const existingLines = existingContent.split(/\r?\n/);
+  const existingMap = new Map();
+  const existingOrder = [];
 
   for (const line of existingLines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      existingOrder.push({ type: 'raw', line });
+      continue;
+    }
     const eqIdx = line.indexOf('=');
-    if (eqIdx !== -1) {
-      const key = line.slice(0, eqIdx).trim();
-      existingKeys.add(key);
-      if (key === 'DATABASE_URL') {
-        existingDbUrl = line.slice(eqIdx + 1).trim();
-      }
+    if (eqIdx === -1) {
+      existingOrder.push({ type: 'raw', line });
+      continue;
     }
+    const key = line.slice(0, eqIdx).trim();
+    existingMap.set(key, line);
+    existingOrder.push({ type: 'key', key });
   }
 
-  const newLines = newContent.split('\n');
-  const merged = [];
+  // Start from existing content (preserve host app settings)
+  const result = existingContent.replace(/\s*$/, '');
+  const keysPresent = new Set(existingMap.keys());
 
-  if (existingDbUrl) {
-    for (const line of newLines) {
-      if (line.startsWith('DATABASE_URL=')) {
-        continue;
-      }
-      merged.push(line);
+  const toAppend = [];
+  const newLines = newContent.split(/\r?\n/);
+  let pendingComment = [];
+
+  for (const line of newLines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      pendingComment = [];
+      continue;
     }
-    const dbSectionStart = merged.findIndex(l => l.includes('# Database'));
-    if (dbSectionStart !== -1) {
-      merged.splice(dbSectionStart, 0, `DATABASE_URL=${existingDbUrl}`);
-    } else {
-      merged.push('');
-      merged.push('# Database Configuration (preserved from existing .env)');
-      merged.push(`DATABASE_URL=${existingDbUrl}`);
+    if (trimmed.startsWith('#')) {
+      pendingComment.push(line);
+      continue;
     }
-  } else {
-    merged.push(...newLines);
+    const eqIdx = line.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = line.slice(0, eqIdx).trim();
+    if (keysPresent.has(key)) {
+      pendingComment = [];
+      continue; // keep existing value
+    }
+    // New key from SecureAuth — append with its section comment if any
+    if (pendingComment.length) {
+      toAppend.push('');
+      toAppend.push(...pendingComment);
+      pendingComment = [];
+    }
+    toAppend.push(line);
+    keysPresent.add(key);
   }
 
-  for (const key of existingKeys) {
-    if (key === 'DATABASE_URL') continue;
-    const existingLine = existingLines.find(l => l.startsWith(key + '='));
-    if (existingLine) {
-      const newIdx = merged.findIndex(l => l.startsWith(key + '='));
-      if (newIdx !== -1) {
-        merged[newIdx] = existingLine;
-      }
-    }
+  if (toAppend.length === 0) {
+    return existingContent;
   }
 
-  return merged.join('\n');
+  return result + '\n' + toAppend.join('\n') + '\n';
 }
 
 function writeEnvFile(targetDir, answers) {

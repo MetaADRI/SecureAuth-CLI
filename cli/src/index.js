@@ -24,26 +24,33 @@ const FEATURE_LABELS = {
   accountLockout: 'Account Lockout'
 };
 
-function printSuccess(answers, filesCreated) {
+function printSuccess(answers, filesCreated, patchResult) {
   const features = answers.features && answers.features.length > 0
     ? answers.features.map(f => '    ' + logger.bullet() + ' ' + (FEATURE_LABELS[f] || f)).join('\n')
     : '    (none selected — core auth only)';
 
-  logger.box(`
-${logger.checkmark()} SecureAuth installed successfully!
+  const isPatch = answers.installMode === 'patch';
+  const filesLine = isPatch
+    ? `  Mode:             Patch existing login route`
+    : `  Files generated:  ${filesCreated}`;
 
-  Files generated:  ${filesCreated}
-  Database:         ${answers.database}
-  Port:             ${answers.port}
+  const patchLines = isPatch && patchResult && patchResult.patched
+    ? `
+  Auth route:       ${patchResult.authFile ? path.relative(process.cwd(), patchResult.authFile) : 'n/a'}
+  Lockout module:   ${patchResult.modulePath ? path.relative(process.cwd(), patchResult.modulePath) : 'n/a'}
+`
+    : '';
 
-  Features enabled:
-${features}
+  const nextSteps = isPatch
+    ? `
+${logger.separator('Next Steps')}
 
-${logger.separator('Quick Start')}
-
-  ${logger.bold('npm start')}
-  ${logger.arrow()} http://localhost:${answers.port}
-
+  1. Review .env (MAX_FAILED_ATTEMPTS, LOCKOUT_DURATION_MINUTES)
+  2. Run ${logger.bold('npm start')}
+  3. Try logging in with a wrong password ${answers.features && answers.features.includes('accountLockout') ? '5 times' : ''} to verify lockout
+  4. Correct password after lock expiry (or reset locked_until in the DB)
+`
+    : `
 ${logger.separator('API Endpoints')}
 
   ${logger.dim('Auth')}
@@ -75,7 +82,18 @@ ${logger.separator('Next Steps')}
   2. Run ${logger.bold('npm start')}
   3. Open ${logger.underline('http://localhost:' + answers.port)}
   4. Register at POST /api/register
-`);
+`;
+
+  logger.box(`
+${logger.checkmark()} SecureAuth installed successfully!
+
+${filesLine}
+  Database:         ${answers.database}
+  Port:             ${answers.port}
+${patchLines}
+  Features enabled:
+${features}
+${nextSteps}`);
 }
 
 async function init(defaults) {
@@ -109,6 +127,11 @@ async function init(defaults) {
     answers.installMode = 'scaffold';
   }
 
+  // Auto-detect SQLite when the host app already uses it
+  if (projectType === 'existing' && answers.database === 'sqlite') {
+    // keep user choice
+  }
+
   logger.info('');
   const confirmed = await askConfirm(defaults);
   if (!confirmed) {
@@ -127,16 +150,34 @@ async function init(defaults) {
 
   logger.info('');
 
-  if (answers.installMode === 'patch') {
+  try {
     await install(targetDir, report.missingDeps, answers);
-    patchExisting(targetDir, answers);
-    writeEnvFile(targetDir, answers);
-    printSuccess(answers, 0);
-  } else {
-    await install(targetDir, report.missingDeps, answers);
-    const filesCreated = scaffold(targetDir, answers);
-    writeEnvFile(targetDir, answers);
-    printSuccess(answers, filesCreated);
+
+    let filesCreated = 0;
+    let patchResult = null;
+
+    if (answers.installMode === 'patch') {
+      patchResult = patchExisting(targetDir, answers);
+      writeEnvFile(targetDir, answers);
+      printSuccess(answers, 0, patchResult);
+
+      if (!patchResult || !patchResult.patched) {
+        logger.warn('Patch mode finished with warnings — check messages above.');
+        process.exitCode = 1;
+      }
+    } else {
+      filesCreated = scaffold(targetDir, answers);
+      // If user also wanted lockout on an existing app "alongside", still try patching if lockout selected
+      if (projectType === 'existing' && answers.features.includes('accountLockout')) {
+        logger.info('Also applying account lockout to existing login route (if found)...');
+        patchResult = patchExisting(targetDir, answers);
+      }
+      writeEnvFile(targetDir, answers);
+      printSuccess(answers, filesCreated, patchResult);
+    }
+  } catch (err) {
+    logger.error('Installation failed: ' + (err && err.message ? err.message : String(err)));
+    process.exitCode = 1;
   }
 }
 

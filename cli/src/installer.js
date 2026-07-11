@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const { execSync } = require('child_process');
 const { logger } = require('./logger');
 
@@ -6,12 +8,42 @@ const DB_DRIVERS = {
   postgres: 'pg'
 };
 
+function isDepInstalled(cwd, name) {
+  const pkgPath = path.join(cwd, 'package.json');
+  if (!fs.existsSync(pkgPath)) return false;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    const all = { ...pkg.dependencies, ...pkg.devDependencies };
+    if (!(name in all)) return false;
+    return fs.existsSync(path.join(cwd, 'node_modules', name));
+  } catch {
+    return false;
+  }
+}
+
 function install(cwd, missingDeps, answers) {
   const dbDriver = DB_DRIVERS[answers.database];
-  const allDeps = [...missingDeps];
+  const allDeps = [...(missingDeps || [])];
 
-  if (dbDriver && !allDeps.includes(dbDriver)) {
-    allDeps.push(dbDriver);
+  if (dbDriver && !isDepInstalled(cwd, dbDriver) && !allDeps.includes(dbDriver)) {
+    // Only add driver if not already in package.json + node_modules
+    const pkgPath = path.join(cwd, 'package.json');
+    let hasInPkg = false;
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        const all = { ...pkg.dependencies, ...pkg.devDependencies };
+        hasInPkg = dbDriver in all;
+      } catch {}
+    }
+    if (!hasInPkg) {
+      allDeps.push(dbDriver);
+    }
+  }
+
+  // Scaffolded SecureAuth templates use bcryptjs
+  if (answers.installMode !== 'patch' && !isDepInstalled(cwd, 'bcryptjs') && !isDepInstalled(cwd, 'bcrypt')) {
+    if (!allDeps.includes('bcryptjs')) allDeps.push('bcryptjs');
   }
 
   if (allDeps.length === 0) {
