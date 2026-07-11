@@ -470,6 +470,202 @@ function writeMigration(targetDir, dbType) {
   return filePath;
 }
 
+const SCHEMA_FILE_CANDIDATES = [
+  'initDatabase.js', 'init-db.js', 'init_db.js', 'initDatabase.ts',
+  'database.js', 'db.js', 'schema.js', 'models.js',
+  'database/init.js', 'database/setup.js', 'database/schema.js',
+  'database/db.js', 'database/index.js',
+  'db/init.js', 'db/setup.js', 'db/schema.js', 'db/index.js',
+  'src/database.js', 'src/db.js', 'src/schema.js',
+  'src/database/init.js', 'src/database/setup.js',
+  'backend/database.js', 'backend/db.js',
+  'backend/database/init.js', 'backend/database/setup.js',
+  'models/User.js', 'models/user.js', 'models/userModel.js',
+  'src/models/User.js', 'src/models/user.js', 'src/models/userModel.js'
+];
+
+const SCHEMA_NESTED_CANDIDATES = [
+  ['database', 'schema.sql'],
+  ['db', 'schema.sql'],
+  ['migrations', '001_init.sql'],
+  ['migrations', 'create_users.sql'],
+  ['src', 'database', 'schema.sql'],
+  ['prisma', 'schema.prisma']
+];
+
+function findSchemaFile(targetDir) {
+  for (const name of SCHEMA_FILE_CANDIDATES) {
+    const p = path.join(targetDir, name);
+    if (fs.existsSync(p)) return p;
+  }
+  for (const parts of SCHEMA_NESTED_CANDIDATES) {
+    const p = path.join(targetDir, ...parts);
+    if (fs.existsSync(p)) return p;
+  }
+  const entry = findEntryPoint(targetDir);
+  if (entry) {
+    const content = fs.readFileSync(entry, 'utf-8');
+    const schemaRequire = content.match(/require\(['"]\.\/?([^'"]*(?:database|db|schema|init)[^'"]*)['"]\)/i);
+    if (schemaRequire) {
+      const base = path.dirname(entry);
+      let schemaPath = schemaRequire[1].replace(/\.js$/, '');
+      for (const ext of ['', '.js', '.ts']) {
+        const full = path.resolve(base, schemaPath + ext);
+        if (fs.existsSync(full)) return full;
+      }
+    }
+  }
+  return null;
+}
+
+function isSchemaAlreadyPatched(content) {
+  return /failed_login_attempts/.test(content);
+}
+
+function detectSchemaStyle(content) {
+  if (/\.exec\s*\(`[\s\S]*CREATE\s+TABLE/i.test(content) || /\.exec\s*\([\s\S]*CREATE\s+TABLE/i.test(content)) return 'sqlite-exec';
+  if (/CREATE\s+TABLE/i.test(content)) return 'sql';
+  if (/knex\.schema|createTable\s*\(/i.test(content)) return 'knex';
+  if (/\.init\s*\(|\.define\s*\(/i.test(content) && /DataTypes|sequelize/i.test(content)) return 'sequelize';
+  if (/model\s*\(\s*['"]users['"]/i.test(content)) return 'mongoose';
+  return 'unknown';
+}
+
+function generateLockoutColumnsForSchema(dbType) {
+  if (dbType === 'postgres') {
+    return `  failed_login_attempts INTEGER DEFAULT 0,
+  locked_until TIMESTAMPTZ,
+  last_failed_login TIMESTAMPTZ`;
+  }
+  return `  failed_login_attempts INTEGER DEFAULT 0,
+  locked_until TEXT,
+  last_failed_login TEXT`;
+}
+
+function patchSqlInJs(content, dbType) {
+  const createTableRegex = /((?:db|pool|client|connection)\s*\.\s*exec\s*\(\s*(?:`|['"]))([\s\S]*?)(CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?users\s*\([\s\S]*?)(\)\s*(?:`|['"]))/i;
+  const match = content.match(createTableRegex);
+  if (!match) return { content, modified: false };
+
+  const fullMatch = match[0];
+  const usersTableStart = match[3];
+  const closing = match[4];
+
+  const colDef = generateLockoutColumnsForSchema(dbType);
+
+  const patched = fullMatch.replace(
+    usersTableStart + closing,
+    usersTableStart + ',\n' + colDef + '\n' + closing
+  );
+
+  return {
+    content: content.replace(fullMatch, patched),
+    modified: true
+  };
+}
+
+function patchRawSql(content, dbType) {
+  const createTableRegex = /(CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?users\s*\([\s\S]*?)(\)\s*;?\s*$)/im;
+  const match = content.match(createTableRegex);
+  if (!match) return { content, modified: false };
+
+  const tableBody = match[1];
+  const closing = match[2];
+
+  const colDef = generateLockoutColumnsForSchema(dbType);
+
+  const patched = content.replace(
+    match[0],
+    tableBody + ',\n' + colDef + '\n' + closing
+  );
+
+  return {
+    content: patched,
+    modified: true
+  };
+}
+
+function patchKnexSchema(content, dbType) {
+  const knexRegex = /createTable\s*\(\s*['"]users['"]\s*,\s*(?:function\s*\(\s*table\s*\)|\(\s*table\s*\)|\(\s*t\s*\)|\(\s*b\s*\)\s*=>|table\s*=>)/i;
+  const match = content.match(knexRegex);
+  if (!match) return { content, modified: false };
+
+  const afterMatch = content.slice(match.index + match[0].length);
+  const closingRegex = /\}\s*\)/;
+  const closingMatch = afterMatch.match(closingRegex);
+  if (!closingMatch) return { content, modified: false };
+
+  const insertPos = match.index + match[0].length + closingMatch.index;
+  const colDef = dbType === 'postgres'
+    ? `\n    table.integer('failed_login_attempts').defaultTo(0);\n    table.timestamp('locked_until');\n    table.timestamp('last_failed_login');`
+    : `\n    table.integer('failed_login_attempts').defaultTo(0);\n    table.string('locked_until');\n    table.string('last_failed_login');`;
+
+  return {
+    content: content.slice(0, insertPos) + colDef + '\n  ' + content.slice(insertPos),
+    modified: true
+  };
+}
+
+function patchSequelizeModel(content, dbType) {
+  const initRegex = /((?:\.init|\.define)\s*\([^)]*\{[\s\S]*?)(\}\s*,)/;
+  const match = content.match(initRegex);
+  if (!match) return { content, modified: false };
+
+  const colDef = dbType === 'postgres'
+    ? `\n    failed_login_attempts: { type: DataTypes.INTEGER, defaultValue: 0 },\n    locked_until: DataTypes.DATE,\n    last_failed_login: DataTypes.DATE,`
+    : `\n    failed_login_attempts: { type: DataTypes.INTEGER, defaultValue: 0 },\n    locked_until: DataTypes.TEXT,\n    last_failed_login: DataTypes.TEXT,`;
+
+  return {
+    content: content.replace(match[0], match[1] + colDef + '\n  ' + match[2]),
+    modified: true
+  };
+}
+
+function patchSchemaFile(targetDir, dbType) {
+  const schemaFile = findSchemaFile(targetDir);
+  if (!schemaFile) {
+    logger.info('No schema file found — generating migration SQL instead');
+    return writeMigration(targetDir, dbType);
+  }
+
+  let content = fs.readFileSync(schemaFile, 'utf-8');
+  if (isSchemaAlreadyPatched(content)) {
+    logger.info(`Schema file already has lockout columns: ${path.relative(targetDir, schemaFile)}`);
+    return null;
+  }
+
+  const schemaStyle = detectSchemaStyle(content);
+  logger.info(`Found schema file: ${path.relative(targetDir, schemaFile)} (style: ${schemaStyle})`);
+
+  let result;
+  switch (schemaStyle) {
+    case 'sqlite-exec':
+      result = patchSqlInJs(content, dbType);
+      break;
+    case 'sql':
+      result = patchRawSql(content, dbType);
+      break;
+    case 'knex':
+      result = patchKnexSchema(content, dbType);
+      break;
+    case 'sequelize':
+      result = patchSequelizeModel(content, dbType);
+      break;
+    default:
+      logger.warn(`Unknown schema style in ${path.relative(targetDir, schemaFile)} — generating migration SQL instead`);
+      return writeMigration(targetDir, dbType);
+  }
+
+  if (!result.modified) {
+    logger.warn(`Could not patch schema file automatically — generating migration SQL instead`);
+    return writeMigration(targetDir, dbType);
+  }
+
+  fs.writeFileSync(schemaFile, result.content, 'utf-8');
+  logger.success(`Patched ${path.relative(targetDir, schemaFile)} with lockout columns`);
+  return null;
+}
+
 function patchExisting(targetDir, answers) {
   const hasLockout = answers.features && answers.features.includes('accountLockout');
   if (!hasLockout) {
@@ -488,8 +684,8 @@ function patchExisting(targetDir, answers) {
   let content = fs.readFileSync(authFile, 'utf-8');
   if (isAlreadyPatched(content)) {
     logger.info('Auth route already has lockout protection');
-    const migrationPath = writeMigration(targetDir, detectDatabaseType(targetDir));
-    return { patched: true, alreadyPatched: true, authFile, migrationPath };
+    patchSchemaFile(targetDir, detectDatabaseType(targetDir));
+    return { patched: true, alreadyPatched: true, authFile };
   }
 
   const dbType = detectDatabaseType(targetDir);
@@ -514,7 +710,7 @@ function patchExisting(targetDir, answers) {
   fs.writeFileSync(authFile, content, 'utf-8');
   logger.success(`Patched ${path.relative(targetDir, authFile)} with account lockout`);
 
-  const migrationPath = writeMigration(targetDir, dbType);
+  const migrationPath = patchSchemaFile(targetDir, dbType);
 
   logger.info('Add these to your .env file for lockout configuration:');
   logger.info('  MAX_FAILED_ATTEMPTS=5');
@@ -523,4 +719,4 @@ function patchExisting(targetDir, answers) {
   return { patched: true, authFile, migrationPath, dbType };
 }
 
-module.exports = { patchExisting, findEntryPoint, findAuthRouteFile, detectDatabaseType, detectDbVariable, detectParamStyle, detectApiStyle, isAlreadyPatched, writeMigration };
+module.exports = { patchExisting, findEntryPoint, findAuthRouteFile, findSchemaFile, detectSchemaStyle, detectDatabaseType, detectDbVariable, detectParamStyle, detectApiStyle, isAlreadyPatched, isSchemaAlreadyPatched, writeMigration, patchSchemaFile };
