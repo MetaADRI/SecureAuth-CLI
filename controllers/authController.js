@@ -229,12 +229,43 @@ async function demoLogin(req, res) {
       });
     }
 
+    // Check if account is locked (same check as loginStep1)
+    if (user.locked_until) {
+      const lockedUntil = new Date(user.locked_until);
+      if (new Date() < lockedUntil) {
+        const minutesLeft = Math.ceil((lockedUntil - new Date()) / 60000);
+        return res.status(403).json({
+          error: 'Account locked',
+          message: `Too many failed login attempts. Account is locked for ${minutesLeft} more minutes.`,
+          locked_until: user.locked_until,
+          minutes_remaining: minutesLeft
+        });
+      } else {
+        // Lock expired, reset attempts
+        await userModel.resetFailedAttempts(user.id);
+      }
+    }
+
     const isValid = await bcrypt.compare(password, user.password_hash);
 
     if (!isValid) {
+      // Increment failed attempts (lockout protection for demo route too)
+      const failedAttempts = await userModel.incrementFailedAttempts(user.id);
+
+      if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
+        await userModel.lockAccount(user.id, LOCKOUT_DURATION_MINUTES);
+        return res.status(403).json({
+          error: 'Account locked',
+          message: `Too many failed login attempts. Your account has been locked for ${LOCKOUT_DURATION_MINUTES} minutes.`,
+          attempts_remaining: 0
+        });
+      }
+
+      const attemptsLeft = MAX_FAILED_ATTEMPTS - failedAttempts;
       return res.status(401).json({
         error: 'Invalid credentials',
-        message: 'Email or password is incorrect. Try Demo@123'
+        message: `Email or password is incorrect. ${attemptsLeft} attempts remaining before account lockout.`,
+        attempts_remaining: attemptsLeft
       });
     }
 

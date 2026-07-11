@@ -112,10 +112,11 @@ const LOCKOUT_DURATION_MINUTES = parseInt(process.env.LOCKOUT_DURATION_MINUTES) 
 `;
 }
 
-function generateHelperBlock() {
+function generateHelperBlock(dbVar, paramStyle) {
+  const p1 = paramStyle === 'postgres' ? '$1' : '?';
   return `
 
-async function checkAccountLockout(user) {
+async function checkAccountLockout(user, ${dbVar}) {
   if (user.locked_until) {
     const lockedUntil = new Date(user.locked_until);
     if (lockedUntil > new Date()) {
@@ -123,16 +124,19 @@ async function checkAccountLockout(user) {
       const err = new Error(\`Account locked due to too many failed attempts. Try again in \${minutesLeft} minute(s).\`);
       err.statusCode = 423;
       throw err;
+    } else {
+      // Lock expired — reset failed attempts so user can log in cleanly
+      await ${dbVar}.query('UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_failed_login = NULL WHERE id = ${p1}', [user.id]);
     }
   }
 }
 `;
 }
 
-function generateLockoutCheckBlock() {
+function generateLockoutCheckBlock(dbVar) {
   return `
     try {
-      await checkAccountLockout(user);
+      await checkAccountLockout(user, ${dbVar});
     } catch (lockErr) {
       return res.status(lockErr.statusCode || 423).json({
         error: 'Account locked',
@@ -215,13 +219,13 @@ function addEnvVars(content) {
   return { content: generateLockoutEnvBlock() + '\n' + content, modified: true };
 }
 
-function addHelper(content) {
+function addHelper(content, dbVar, paramStyle) {
   const loginRouteRegex = /(?:router|app)\s*\.\s*(?:post|get)\s*\(\s*['"](?:\/(?:api\/)?)?(?:login|signin)['"]/;
   const loginMatch = content.match(loginRouteRegex);
   if (!loginMatch) return { content, modified: false };
 
   const lineStart = content.lastIndexOf('\n', loginMatch.index) + 1;
-  const helper = generateHelperBlock();
+  const helper = generateHelperBlock(dbVar, paramStyle);
   return {
     content: content.slice(0, lineStart) + helper + '\n' + content.slice(lineStart),
     modified: true
@@ -234,7 +238,7 @@ function addLockoutCheck(content, dbVar) {
   if (!compareMatch) return { content, modified: false };
 
   const lineStart = content.lastIndexOf('\n', compareMatch.index) + 1;
-  const lockoutCheck = generateLockoutCheckBlock();
+  const lockoutCheck = generateLockoutCheckBlock(dbVar);
   return {
     content: content.slice(0, lineStart) + lockoutCheck + content.slice(lineStart),
     modified: true
@@ -403,7 +407,7 @@ function patchExisting(targetDir, answers) {
   let result = addEnvVars(content);
   content = result.content;
 
-  result = addHelper(content);
+  result = addHelper(content, dbVar, paramStyle);
   content = result.content;
 
   result = addLockoutCheck(content, dbVar);

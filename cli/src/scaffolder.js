@@ -11,6 +11,9 @@ async function checkAccountLockout(user) {
     if (lockedUntil > new Date()) {
       const minutesLeft = Math.ceil((lockedUntil - new Date()) / 60000);
       throw { status: 423, message: \`Account locked due to too many failed attempts. Try again in \${minutesLeft} minute(s).\` };
+    } else {
+      // Lock expired \u2014 reset failed attempts so user can log in cleanly
+      await userModel.resetFailedAttempts(user.id);
     }
   }
 }
